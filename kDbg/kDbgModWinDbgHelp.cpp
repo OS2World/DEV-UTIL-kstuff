@@ -713,7 +713,7 @@ static int kdbgModDHOpen(PKDBGMOD *ppMod, PKRDR pRdr, KBOOL fCloseRdr, KFOFF off
 /**
  * Methods for a PE module.
  */
-const KDBGMODOPS g_kDbgModWinDbgHelpOpen =
+KDBGMODOPS const g_kDbgModWinDbgHelpOpen =
 {
     "Windows DbgHelp",
     NULL,

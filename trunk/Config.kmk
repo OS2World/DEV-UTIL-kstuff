@@ -55,7 +55,7 @@ TEMPLATE_kStuff_DEFS.win         = KS_OS_WINDOWS _CRT_SECURE_NO_DEPRECATE _CRT_N
 TEMPLATE_kStuff_DEFS.x86         = KS_BITS=32
 TEMPLATE_kStuff_DEFS.amd64       = KS_BITS=64
 
-TEMPLATE_kStuff_INCS             = $(PATH_ROOT)/kStuff/include
+TEMPLATE_kStuff_INCS             = $(PATH_ROOT)/include
 
 TEMPLATE_kStuff_ASTOOL           = YASM
 TEMPLATE_kStuff_ASTOOL.os2       = NASM

@@ -23,7 +23,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #
 
-DEPTH ?= ..
+DEPTH = .
 include $(PATH_KBUILD)/subheader.kmk
 
 include $(PATH_SUB_CURRENT)/kCpu/Makefile.kmk

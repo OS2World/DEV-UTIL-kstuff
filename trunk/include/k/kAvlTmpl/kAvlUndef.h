@@ -40,9 +40,17 @@
 #undef KAVL_RANGE
 #undef KAVL_OFFSET
 #undef KAVL_STD_KEY_COMP
+#undef KAVL_LOOKTHRU
+#undef KAVL_LOOKTHRU_HASH
+#undef KAVL_LOCKED
+#undef KAVL_WRITE_LOCK
+#undef KAVL_WRITE_UNLOCK
+#undef KAVL_READ_LOCK
+#undef KAVL_READ_UNLOCK
 #undef KAVLKEY
 #undef KAVLNODE
 #undef KAVLTREEPTR
+#undef KAVLROOT
 #undef KAVL_FN
 #undef KAVL_TYPE
 #undef KAVL_INT
@@ -53,6 +61,8 @@
 #undef mpLeft
 #undef mpRight
 #undef mpList
+#undef mpRoot
+#undef maLookthru
 
 /*
  * The internal macros.

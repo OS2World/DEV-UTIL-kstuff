@@ -29,5 +29,5 @@ EXPORTS
     _penter
     _pexit
     KPrfInit
-
+    kPrf2WrapResolve
 

@@ -105,6 +105,7 @@ kPrf2_SOURCES       = \
 
 kPrf2_SOURCES.win = \
 	dllmain-win.cpp \
+	kPrf2WinApiWrapperHlp.c \
 	prf$(BUILD_TARGET_ARCH)msc.asm \
 	kPrf2-win-$(BUILD_TARGET_ARCH).def
 prfx86msc.asm_DEFS.win.x86 = \
@@ -134,8 +135,10 @@ kPrf2WinApiWrappersImp_SOURCES.x86   = kPrf2WinApiWrappersImp-x86.def
 kPrf2WinApiWrappersImp_SOURCES.amd64 = kPrf2WinApiWrappersImp-amd64.def
 
 DLLS.win += kPrf2WinApiWrappers
-kPrf2WinApiWrappers_TEMPLATE = kStuffEXE
+kPrf2WinApiWrappers_TEMPLATE = kPrf2
 kPrf2WinApiWrappers_CFLAGS = -GH -Gh
+kPrf2WinApiWrappers_LDFLAGS.win.x86 = -Entry:DllMain@12
+kPrf2WinApiWrappers_LDFLAGS.win.amd64 = -Entry:DllMain
 kPrf2WinApiWrappers_SOURCES = \
 	kPrf2WinApiWrappers.c \
 	kPrf2WinApiWrappersImp-$(BUILD_TARGET_ARCH).def
@@ -160,7 +163,11 @@ kPrf2WinApiWrappers-kernel32.h:
 	$(APPEND) $@.tmp 'PVOID RtlZeroMemory( PVOID pv, SIZE_T cb );'
 	$(APPEND) $@.tmp 'PVOID RtlMoveMemory( PVOID pvDst, PVOID pvSrc, SIZE_T cb );'
 	$(APPEND) $@.tmp 'VOID NTAPI RtlUnwind( PVOID TargetFrame, PVOID TargetIp, PEXCEPTION_RECORD ExceptionRecord, PVOID ReturnValue );'
-#	$(APPEND) $@.tmp 'VOID NTAPI RtlUnwindEx( FRAME_POINTERS TargetFrame, PVOID TargetIp, PEXCEPTION_RECORD ExceptionRecord, PVOID ReturnValue, PCONTEXT ContextRecord, PUNWIND_HISTORY_TABLE HistoryTable );'
+	$(APPEND) $@.tmp 'VOID NTAPI RtlUnwindEx( FRAME_POINTERS TargetFrame, PVOID TargetIp, PEXCEPTION_RECORD ExceptionRecord, PVOID ReturnValue, PCONTEXT ContextRecord, PUNWIND_HISTORY_TABLE HistoryTable );'
+	$(APPEND) $@.tmp 'ULONGLONG WINAPI RtlVirtualUnwind( ULONG HandlerType, ULONGLONG ImageBase, ULONGLONG ControlPC, PRUNTIME_FUNCTION FunctionEntry, PCONTEXT ContextRecord, PBOOLEAN InFunction, PFRAME_POINTERS EstablisherFrame, PKNONVOLATILE_CONTEXT_POINTERS ContextPointers );'
+	$(APPEND) $@.tmp 'PVOID WINAPI RtlPcToFileHeader( PVOID PcValue, PVOID * BaseOfImage );'
+	$(APPEND) $@.tmp 'PVOID WINAPI RtlLookupFunctionEntry( ULONGLONG ControlPC, PULONGLONG ImageBase, PULONGLONG TargetGp );'
+	$(APPEND) $@.tmp 'void WINAPI RtlRaiseException(PEXCEPTION_RECORD pXcpRec);'
 	$(APPEND) $@.tmp 'int WINAPI uaw_lstrcmpW( LPCUWSTR lpString1, LPCUWSTR lpString2 );'
 	$(APPEND) $@.tmp 'int WINAPI uaw_lstrcmpiW( LPCUWSTR lpString1, LPCUWSTR lpString2 );'
 	$(APPEND) $@.tmp 'int WINAPI uaw_lstrlenW( LPCUWSTR lpString );'

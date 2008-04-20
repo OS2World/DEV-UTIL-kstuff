@@ -55,6 +55,20 @@ s/^[[:space:]]*//
 s/[[:space:]]*$//
 s/[[:space:]][[:space:]]*/ /g
 /^$/b drop_line
+
+# Filter out APIs that hasn't been implemented.
+/AddLocalAlternateComputerNameA/b drop_line
+/AddLocalAlternateComputerNameW/b drop_line
+/EnumerateLocalComputerNamesA/b drop_line
+/EnumerateLocalComputerNamesW/b drop_line
+/RemoveLocalAlternateComputerNameA/b drop_line
+/RemoveLocalAlternateComputerNameW/b drop_line
+/SetLocalPrimaryComputerNameA/b drop_line
+/SetLocalPrimaryComputerNameW/b drop_line
+/__C_specific_handler/b drop_line
+/__misaligned_access/b drop_line
+/_local_unwind/b drop_line
+
 b end
 
 #

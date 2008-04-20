@@ -9187,6 +9187,51 @@ __declspec(dllexport) VOID NTAPI kPrf2Wrap_RtlUnwind( PVOID TargetFrame, PVOID T
     pfn( TargetFrame, TargetIp, ExceptionRecord, ReturnValue );
 }
 
+typedef VOID NTAPI FN_RtlUnwindEx( FRAME_POINTERS TargetFrame, PVOID TargetIp, PEXCEPTION_RECORD ExceptionRecord, PVOID ReturnValue, PCONTEXT ContextRecord, PUNWIND_HISTORY_TABLE HistoryTable );
+__declspec(dllexport) VOID NTAPI kPrf2Wrap_RtlUnwindEx( FRAME_POINTERS TargetFrame, PVOID TargetIp, PEXCEPTION_RECORD ExceptionRecord, PVOID ReturnValue, PCONTEXT ContextRecord, PUNWIND_HISTORY_TABLE HistoryTable )
+{
+    static FN_RtlUnwindEx *pfn = 0;
+    if (!pfn)
+        kPrf2WrapResolve((void **)&pfn, "RtlUnwindEx", &g_Kernel32);
+    pfn( TargetFrame, TargetIp, ExceptionRecord, ReturnValue, ContextRecord, HistoryTable );
+}
+
+typedef ULONGLONG WINAPI FN_RtlVirtualUnwind( ULONG HandlerType, ULONGLONG ImageBase, ULONGLONG ControlPC, PRUNTIME_FUNCTION FunctionEntry, PCONTEXT ContextRecord, PBOOLEAN InFunction, PFRAME_POINTERS EstablisherFrame, PKNONVOLATILE_CONTEXT_POINTERS ContextPointers );
+__declspec(dllexport) ULONGLONG WINAPI kPrf2Wrap_RtlVirtualUnwind( ULONG HandlerType, ULONGLONG ImageBase, ULONGLONG ControlPC, PRUNTIME_FUNCTION FunctionEntry, PCONTEXT ContextRecord, PBOOLEAN InFunction, PFRAME_POINTERS EstablisherFrame, PKNONVOLATILE_CONTEXT_POINTERS ContextPointers )
+{
+    static FN_RtlVirtualUnwind *pfn = 0;
+    if (!pfn)
+        kPrf2WrapResolve((void **)&pfn, "RtlVirtualUnwind", &g_Kernel32);
+    return pfn( HandlerType, ImageBase, ControlPC, FunctionEntry, ContextRecord, InFunction, EstablisherFrame, ContextPointers );
+}
+
+typedef PVOID WINAPI FN_RtlPcToFileHeader( PVOID PcValue, PVOID * BaseOfImage );
+__declspec(dllexport) PVOID WINAPI kPrf2Wrap_RtlPcToFileHeader( PVOID PcValue, PVOID * BaseOfImage )
+{
+    static FN_RtlPcToFileHeader *pfn = 0;
+    if (!pfn)
+        kPrf2WrapResolve((void **)&pfn, "RtlPcToFileHeader", &g_Kernel32);
+    return pfn( PcValue, BaseOfImage );
+}
+
+typedef PVOID WINAPI FN_RtlLookupFunctionEntry( ULONGLONG ControlPC, PULONGLONG ImageBase, PULONGLONG TargetGp );
+__declspec(dllexport) PVOID WINAPI kPrf2Wrap_RtlLookupFunctionEntry( ULONGLONG ControlPC, PULONGLONG ImageBase, PULONGLONG TargetGp )
+{
+    static FN_RtlLookupFunctionEntry *pfn = 0;
+    if (!pfn)
+        kPrf2WrapResolve((void **)&pfn, "RtlLookupFunctionEntry", &g_Kernel32);
+    return pfn( ControlPC, ImageBase, TargetGp );
+}
+
+typedef void WINAPI FN_RtlRaiseException(PEXCEPTION_RECORD pXcpRec);
+__declspec(dllexport) void WINAPI kPrf2Wrap_RtlRaiseException(PEXCEPTION_RECORD pXcpRec)
+{
+    static FN_RtlRaiseException *pfn = 0;
+    if (!pfn)
+        kPrf2WrapResolve((void **)&pfn, "RtlRaiseException", &g_Kernel32);
+    pfn( pXcpRec);
+}
+
 typedef int WINAPI FN_uaw_lstrcmpW( LPCUWSTR lpString1, LPCUWSTR lpString2 );
 __declspec(dllexport) int WINAPI kPrf2Wrap_uaw_lstrcmpW( LPCUWSTR lpString1, LPCUWSTR lpString2 )
 {

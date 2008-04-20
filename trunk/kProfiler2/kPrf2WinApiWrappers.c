@@ -31,8 +31,12 @@
 #define UNICODE
 #include <Windows.h>
 #include <TLHelp32.h>
+#include <k/kDefs.h>
 
-
+#if K_ARCH == K_ARCH_X86_32
+typedef PVOID PRUNTIME_FUNCTION;
+typedef FARPROC PGET_RUNTIME_FUNCTION_CALLBACK;
+#endif
 
 /*******************************************************************************
 *   Structures and Typedefs                                                    *
@@ -44,6 +48,7 @@ typedef struct KPRF2WRAPDLL
 } KPRF2WRAPDLL;
 typedef KPRF2WRAPDLL *PKPRF2WRAPDLL;
 typedef KPRF2WRAPDLL const *PCKPRF2WRAPDLL;
+
 
 /* TODO (amd64):
 

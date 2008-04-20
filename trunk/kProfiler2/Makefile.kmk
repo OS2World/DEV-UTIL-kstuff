@@ -125,6 +125,73 @@ kPrf2Read_LIBS  = \
 	$(PATH_LIB)/kRdrStatic$(SUFF_LIB) \
 	$(PATH_LIB)/kHlpCRTStatic$(SUFF_LIB)
 
+#
+# kPrf2WinApiWrappers
+#
+IMPORT_LIBS.win += kPrf2WinApiWrappersImp
+kPrf2WinApiWrappersImp_TEMPLATE = kStuffEXE
+kPrf2WinApiWrappersImp_SOURCES.x86   = kPrf2WinApiWrappersImp-x86.def
+kPrf2WinApiWrappersImp_SOURCES.amd64 = kPrf2WinApiWrappersImp-amd64.def
+
+DLLS.win += kPrf2WinApiWrappers
+kPrf2WinApiWrappers_TEMPLATE = kStuffEXE
+kPrf2WinApiWrappers_CFLAGS = -GH -Gh
+kPrf2WinApiWrappers_SOURCES = \
+	kPrf2WinApiWrappers.c
+#	kPrf2WinApiWrappersImp-$(BUILD_TARGET_ARCH).def
+kPrf2WinApiWrappers_LIBS = \
+	$(PATH_kPrf2)/kPrf2.lib
+
+#$(PATH_TARGET)/kPrf2WinApiWrappers.def: $(MAKEFILE)
+#	$(RM) -f $@
+#	$(APPEND) $@ 'LIBRARY kPrf2WinApiWrappers'
+#	$(APPEND) $@ 'EXPORTS'
+
+ifeq (0,1)
+kPrf2WinApiWrappers-kernel32.h:
+	$(SED) -f kPrf2WinApi-pre.sed --output $@.tmp \
+		$(PATH_SDK_WINPSDK_INC)/WinBase.h \
+		$(PATH_SDK_WINPSDK_INC)/WinCon.h \
+		$(PATH_SDK_WINPSDK_INC)/WinNLS.h \
+		$(PATH_SDK_WINPSDK_INC)/WinVer.h \
+		$(PATH_SDK_WINPSDK_INC)/WinNT.h \
+		$(PATH_SDK_WINPSDK_INC)/TlHelp32.h
+	$(APPEND) $@.tmp 'BOOL WINAPI ReplaceFile( LPCSTR lpReplacedFileName, LPCSTR lpReplacementFileName, LPCSTR lpBackupFileName, DWORD dwReplaceFlags, LPVOID lpExclude, LPVOID lpReserved );'
+	$(APPEND) $@.tmp 'BOOL WINAPI SetConsoleCursor( PVOID pvUnknown1, PVOID pvUnknown2 );'
+	$(APPEND) $@.tmp 'LPCH WINAPI GetEnvironmentStringsA( VOID );'
+	$(APPEND) $@.tmp 'BOOL WINAPI GetBinaryType( LPCSTR lpApplicationName, LPDWORD lpBinaryType );'
+	$(APPEND) $@.tmp 'WORD NTAPI RtlCaptureStackBackTrace( DWORD FramesToSkip, DWORD FramesToCapture, PVOID * BackTrace, PDWORD BackTraceHash );'
+	$(APPEND) $@.tmp 'PVOID RtlFillMemory( PVOID pv, int ch, SIZE_T cb );'
+	$(APPEND) $@.tmp 'PVOID RtlZeroMemory( PVOID pv, SIZE_T cb );'
+	$(APPEND) $@.tmp 'PVOID RtlMoveMemory( PVOID pvDst, PVOID pvSrc, SIZE_T cb );'
+	$(APPEND) $@.tmp 'VOID NTAPI RtlUnwind( PVOID TargetFrame, PVOID TargetIp, PEXCEPTION_RECORD ExceptionRecord, PVOID ReturnValue );'
+#	$(APPEND) $@.tmp 'VOID NTAPI RtlUnwindEx( FRAME_POINTERS TargetFrame, PVOID TargetIp, PEXCEPTION_RECORD ExceptionRecord, PVOID ReturnValue, PCONTEXT ContextRecord, PUNWIND_HISTORY_TABLE HistoryTable );'
+	$(APPEND) $@.tmp 'int WINAPI uaw_lstrcmpW( LPCUWSTR lpString1, LPCUWSTR lpString2 );'
+	$(APPEND) $@.tmp 'int WINAPI uaw_lstrcmpiW( LPCUWSTR lpString1, LPCUWSTR lpString2 );'
+	$(APPEND) $@.tmp 'int WINAPI uaw_lstrlenW( LPCUWSTR lpString );'
+	$(APPEND) $@.tmp 'LPUWSTR WINAPI uaw_wcschr( LPCUWSTR lpString, WCHAR wc );'
+	$(APPEND) $@.tmp 'LPUWSTR WINAPI uaw_wcscpy( LPUWSTR lpDst, LPCUWSTR lpSrc );'
+	$(APPEND) $@.tmp 'int WINAPI uaw_wcsicmp( LPCUWSTR lp1, LPCUWSTR lp2 );'
+	$(APPEND) $@.tmp 'SIZE_T WINAPI uaw_wcslen( LPCUWSTR lp1 );'
+	$(APPEND) $@.tmp 'LPUWSTR WINAPI uaw_wcsrchr( LPCUWSTR lpString, WCHAR wc );'
+	$(APPEND) $@.tmp 'LPSTR WINAPI lstrcat( LPSTR lpString1, LPCSTR lpString2 );'
+	$(APPEND) $@.tmp 'int WINAPI lstrcmp( LPCSTR lpString1, LPCSTR lpString2 );'
+	$(APPEND) $@.tmp 'int WINAPI lstrcmpi( LPCSTR lpString1, LPCSTR lpString2 );'
+	$(APPEND) $@.tmp 'LPSTR WINAPI lstrcpy( LPSTR lpString1, LPCSTR lpString2 );'
+	$(APPEND) $@.tmp 'LPSTR WINAPI lstrcpyn( LPSTR lpString1, LPCSTR lpString2, int iMaxLength );'
+	$(APPEND) $@.tmp 'int WINAPI lstrlen( LPCSTR lpString );'
+	$(SED) -f kPrf2WinApi-gencode.sed --output $@ $@.tmp
+	$(RM) -f $@.tmp
+
+kPrf2WinApiWrappersImp-$(BUILD_TARGET_ARCH).def:
+	$(RM) -f $@
+	$(PATH_TOOL_$(TEMPLATE_kStuff_TOOL.win.$(BUILD_TARGET_ARCH))_BIN)/dumpbin.exe /EXPORTS /OUT:$@.tmp $(PATH_SDK_WINPSDK_LIB)/Kernel32.lib
+	$(SED) -f kPrf2WinApi-dumpbin.sed --output $@.tmp2 $@.tmp
+	$(APPEND) $@ 'LIBRARY kPrf2WinApiWrappers'
+	$(APPEND) $@ 'EXPORTS'
+	$(SED) -f kPrf2WinApi-genimp.sed --append $@ $@.tmp2
+	$(RM) -f $@.tmp $@.tmp2
+endif
 
 #
 # A simple testcase.

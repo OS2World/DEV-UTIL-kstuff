@@ -1210,7 +1210,7 @@ static void KPRF_NAME(HtmlWriteSortedFunctions)(KPRF_TYPE(P,REPORT) pReport, FIL
                     fprintf(pOut,
                             "    <td class=\"Calls\">%" KPRF_FMT_U64 "</td><td Class=\"Parts\">",
                             pFunc->cCalls);
-                    KPRF_NAME(HtmlWriteParts)(pOut, pFunc->cOnStack, pReport->cCalls);
+                    KPRF_NAME(HtmlWriteParts)(pOut, pFunc->cCalls, pReport->cCalls);
                     fprintf(pOut,       "</td>\n");
                     break;
 

@@ -32,23 +32,35 @@
 #include <Windows.h>
 #include <TLHelp32.h>
 #include <k/kDefs.h>
+#include "kPrf2WinApiWrapperHlp.h"
 
 #if K_ARCH == K_ARCH_X86_32
 typedef PVOID PRUNTIME_FUNCTION;
 typedef FARPROC PGET_RUNTIME_FUNCTION_CALLBACK;
 #endif
 
-/*******************************************************************************
-*   Structures and Typedefs                                                    *
-*******************************************************************************/
-typedef struct KPRF2WRAPDLL
-{
-    HMODULE hmod;
-    char szName[32];
-} KPRF2WRAPDLL;
-typedef KPRF2WRAPDLL *PKPRF2WRAPDLL;
-typedef KPRF2WRAPDLL const *PCKPRF2WRAPDLL;
+/* RtlUnwindEx is used by msvcrt on amd64, but winnt.h only defines it for IA64... */
+typedef struct _FRAME_POINTERS {
+    ULONGLONG MemoryStackFp;
+    ULONGLONG BackingStoreFp;
+} FRAME_POINTERS, *PFRAME_POINTERS;
+typedef PVOID PUNWIND_HISTORY_TABLE;
+typedef PVOID PKNONVOLATILE_CONTEXT_POINTERS;
 
+
+/*******************************************************************************
+*   Global Variables                                                           *
+*******************************************************************************/
+KPRF2WRAPDLL g_Kernel32 =
+{
+    INVALID_HANDLE_VALUE, "KERNEL32"
+};
+
+
+/*
+ * Include the generated code.
+ */
+#include "kPrf2WinApiWrappers-kernel32.h"
 
 /* TODO (amd64):
 
@@ -70,37 +82,36 @@ SetLocalPrimaryComputerNameW
 __C_specific_handler
 __misaligned_access
 _local_unwind
+
 */
 
-/*******************************************************************************
-*   Global Variables                                                           *
-*******************************************************************************/
-KPRF2WRAPDLL g_Kernel32 =
+
+/**
+ * The DLL Main for the Windows API wrapper DLL.
+ *
+ * @returns Success indicator.
+ * @param   hInstDll        The instance handle of the DLL. (i.e. the module handle)
+ * @param   fdwReason       The reason why we're here. This is a 'flag' for reasons of
+ *                          tradition, it's really a kind of enum.
+ * @param   pReserved       Reserved / undocumented something.
+ */
+BOOL WINAPI DllMain(HINSTANCE hInstDLL, DWORD fdwReason, PVOID pReserved)
 {
-    INVALID_HANDLE_VALUE, "KERNEL32"
-};
-
-
-/*******************************************************************************
-*   Internal Functions                                                         *
-*******************************************************************************/
-FARPROC kPrf2WrapResolve(void **ppfn, const char *pszName, PKPRF2WRAPDLL pDll);
-
-
-FARPROC kPrf2WrapResolve(void **ppfn, const char *pszName, PKPRF2WRAPDLL pDll)
-{
-    FARPROC pfn;
-    HMODULE hmod = pDll->hmod;
-    if (hmod == INVALID_HANDLE_VALUE)
+    switch (fdwReason)
     {
-        hmod = LoadLibraryA(pDll->szName);
-        pDll->hmod = hmod;
+        case DLL_PROCESS_ATTACH:
+            break;
+
+        case DLL_PROCESS_DETACH:
+            break;
+
+        case DLL_THREAD_ATTACH:
+            break;
+
+        case DLL_THREAD_DETACH:
+            break;
     }
 
-    pfn = GetProcAddress(hmod, pszName);
-    *ppfn = (void *)pfn;
-    return pfn;
+    return TRUE;
 }
 
-
-#include "kPrf2WinApiWrappers-kernel32.h"

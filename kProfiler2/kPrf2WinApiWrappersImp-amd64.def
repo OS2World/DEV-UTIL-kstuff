@@ -5,8 +5,6 @@ EXPORTS
   AddAtomW=kPrf2Wrap_AddAtomW
   AddConsoleAliasA=kPrf2Wrap_AddConsoleAliasA
   AddConsoleAliasW=kPrf2Wrap_AddConsoleAliasW
-  AddLocalAlternateComputerNameA=kPrf2Wrap_AddLocalAlternateComputerNameA
-  AddLocalAlternateComputerNameW=kPrf2Wrap_AddLocalAlternateComputerNameW
   AddRefActCtx=kPrf2Wrap_AddRefActCtx
   AddVectoredContinueHandler=kPrf2Wrap_AddVectoredContinueHandler
   AddVectoredExceptionHandler=kPrf2Wrap_AddVectoredExceptionHandler
@@ -155,8 +153,6 @@ EXPORTS
   EnumTimeFormatsW=kPrf2Wrap_EnumTimeFormatsW
   EnumUILanguagesA=kPrf2Wrap_EnumUILanguagesA
   EnumUILanguagesW=kPrf2Wrap_EnumUILanguagesW
-  EnumerateLocalComputerNamesA=kPrf2Wrap_EnumerateLocalComputerNamesA
-  EnumerateLocalComputerNamesW=kPrf2Wrap_EnumerateLocalComputerNamesW
   EraseTape=kPrf2Wrap_EraseTape
   EscapeCommFunction=kPrf2Wrap_EscapeCommFunction
   ExitProcess=kPrf2Wrap_ExitProcess
@@ -615,8 +611,6 @@ EXPORTS
   ReleaseSemaphore=kPrf2Wrap_ReleaseSemaphore
   RemoveDirectoryA=kPrf2Wrap_RemoveDirectoryA
   RemoveDirectoryW=kPrf2Wrap_RemoveDirectoryW
-  RemoveLocalAlternateComputerNameA=kPrf2Wrap_RemoveLocalAlternateComputerNameA
-  RemoveLocalAlternateComputerNameW=kPrf2Wrap_RemoveLocalAlternateComputerNameW
   RemoveVectoredContinueHandler=kPrf2Wrap_RemoveVectoredContinueHandler
   RemoveVectoredExceptionHandler=kPrf2Wrap_RemoveVectoredExceptionHandler
   ReplaceFile=kPrf2Wrap_ReplaceFile
@@ -702,8 +696,6 @@ EXPORTS
   SetHandleInformation=kPrf2Wrap_SetHandleInformation
   SetInformationJobObject=kPrf2Wrap_SetInformationJobObject
   SetLastError=kPrf2Wrap_SetLastError
-  SetLocalPrimaryComputerNameA=kPrf2Wrap_SetLocalPrimaryComputerNameA
-  SetLocalPrimaryComputerNameW=kPrf2Wrap_SetLocalPrimaryComputerNameW
   SetLocalTime=kPrf2Wrap_SetLocalTime
   SetLocaleInfoA=kPrf2Wrap_SetLocaleInfoA
   SetLocaleInfoW=kPrf2Wrap_SetLocaleInfoW
@@ -826,14 +818,11 @@ EXPORTS
   WriteProfileStringW=kPrf2Wrap_WriteProfileStringW
   WriteTapemark=kPrf2Wrap_WriteTapemark
   ZombifyActCtx=kPrf2Wrap_ZombifyActCtx
-  __C_specific_handler=kPrf2Wrap___C_specific_handler
-  __misaligned_access=kPrf2Wrap___misaligned_access
   _hread=kPrf2Wrap__hread
   _hwrite=kPrf2Wrap__hwrite
   _lclose=kPrf2Wrap__lclose
   _lcreat=kPrf2Wrap__lcreat
   _llseek=kPrf2Wrap__llseek
-  _local_unwind=kPrf2Wrap__local_unwind
   _lopen=kPrf2Wrap__lopen
   _lread=kPrf2Wrap__lread
   _lwrite=kPrf2Wrap__lwrite

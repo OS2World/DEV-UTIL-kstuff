@@ -1,4 +1,4 @@
-# $Id:$
+# $Id$
 ## @file
 # This SED script will try normalize a windows header
 # in order to make it easy to pick out function prototypes.

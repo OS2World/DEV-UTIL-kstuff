@@ -10,10 +10,6 @@ _AddConsoleAliasA@12
 _AddConsoleAliasA@12
 _AddConsoleAliasW@12
 _AddConsoleAliasW@12
-_AddLocalAlternateComputerNameA@8
-_AddLocalAlternateComputerNameA@8
-_AddLocalAlternateComputerNameW@8
-_AddLocalAlternateComputerNameW@8
 _AddRefActCtx@4
 _AddRefActCtx@4
 _AddVectoredContinueHandler@8
@@ -310,10 +306,6 @@ _EnumUILanguagesA@12
 _EnumUILanguagesA@12
 _EnumUILanguagesW@12
 _EnumUILanguagesW@12
-_EnumerateLocalComputerNamesA@16
-_EnumerateLocalComputerNamesA@16
-_EnumerateLocalComputerNamesW@16
-_EnumerateLocalComputerNamesW@16
 _EraseTape@12
 _EraseTape@12
 _EscapeCommFunction@8
@@ -1242,10 +1234,6 @@ _RemoveDirectoryA@4
 _RemoveDirectoryA@4
 _RemoveDirectoryW@4
 _RemoveDirectoryW@4
-_RemoveLocalAlternateComputerNameA@8
-_RemoveLocalAlternateComputerNameA@8
-_RemoveLocalAlternateComputerNameW@8
-_RemoveLocalAlternateComputerNameW@8
 _RemoveVectoredContinueHandler@4
 _RemoveVectoredContinueHandler@4
 _RemoveVectoredExceptionHandler@4
@@ -1396,10 +1384,6 @@ _SetInformationJobObject@16
 _SetInformationJobObject@16
 _SetLastError@4
 _SetLastError@4
-_SetLocalPrimaryComputerNameA@8
-_SetLocalPrimaryComputerNameA@8
-_SetLocalPrimaryComputerNameW@8
-_SetLocalPrimaryComputerNameW@8
 _SetLocalTime@4
 _SetLocalTime@4
 _SetLocaleInfoA@12

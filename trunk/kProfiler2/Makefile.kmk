@@ -37,6 +37,10 @@ PROGRAMS   += kPrf2Read
 # Our template.
 #
 TEMPLATE_kPrf2 = kProfiler Template
+if1of ($(BUILD_TARGET), win)
+TEMPLATE_kPrf2_EXTENDS = kStuff
+
+else # Eliminate these
 TEMPLATE_kPrf2_TOOL             = GCC3
 TEMPLATE_kPrf2_TOOL.os2         = GCC3OMF
 TEMPLATE_kPrf2_TOOL.win.x86     = VCC70
@@ -46,21 +50,16 @@ TEMPLATE_kPrf2_ASTOOL.os2       = NASM
 
 TEMPLATE_kPrf2_SDKS.win         = WINPSDK
 
-TEMPLATE_kPrf2_DEFS.freebsd     = KPRF_OS_FREEBSD
-TEMPLATE_kPrf2_DEFS.linux       = KPRF_OS_LINUX
-TEMPLATE_kPrf2_DEFS.os2         = KPRF_OS_OS2
-TEMPLATE_kPrf2_DEFS.win         = KPRF_OS_WINDOWS
-
 TEMPLATE_kPrf2_CXXFLAGS.freebsd = -g
 TEMPLATE_kPrf2_CXXFLAGS.linux   = -g
 TEMPLATE_kPrf2_CXXFLAGS.os2     = -g
-TEMPLATE_kPrf2_CXXFLAGS.win     = -Zi -Zl -MD -W3 -GF -GR-
+TEMPLATE_kPrf2_CXXFLAGS.win     = -Zi -Zl -W3 -GF -GR-
 TEMPLATE_kPrf2_CXXFLAGS.win.amd64 = -GS- #-FAcs
 ifneq ($(BUILD_TYPE),debug)
 TEMPLATE_kPrf2_CXXFLAGS.freebsd+= -O3
 TEMPLATE_kPrf2_CXXFLAGS.linux  += -O3
 TEMPLATE_kPrf2_CXXFLAGS.os2    += -O3
-TEMPLATE_kPrf2_CXXFLAGS.win    += -O2xtg -Oi -Ob2
+TEMPLATE_kPrf2_CXXFLAGS.win    += -O2b2
 endif
 
 TEMPLATE_kPrf2_ASFLAGS.freebsd  = -f elf
@@ -80,12 +79,15 @@ TEMPLATE_kPrf2_LDFLAGS.win      = /DEBUG
 TEMPLATE_kPrf2_LIBS.freebsd     =
 TEMPLATE_kPrf2_LIBS.linux       =
 TEMPLATE_kPrf2_LIBS.os2         =
-TEMPLATE_kPrf2_LIBS.win        = \
+TEMPLATE_kPrf2_LIBS.win         = \
 	$(PATH_SDK_WINPSDK_LIB)/psapi.Lib
 TEMPLATE_kPrf2_LIBS.win.x86     = \
-	$(PATH_TOOL_VCC70_LIB)/msvcrt.lib \
-	$(PATH_TOOL_VCC70_LIB)/msvcprt.lib \
+	$(PATH_TOOL_VCC70_LIB)/libcmt.lib \
 	$(PATH_TOOL_VCC70_LIB)/oldnames.lib
+TEMPLATE_kPrf2_LIBS.win.amd64   = \
+	$(PATH_TOOL_VCC80AMD64_LIB)/oldnames.lib \
+	$(PATH_TOOL_VCC80AMD64_LIB)/libcmt.lib
+endif
 
 
 #
@@ -115,7 +117,6 @@ prfamd64msc.asm_DEFS.win.amd64 = \
 #
 # kPrf2Read - The read & producer of statistics.
 #
-#kPrf2Read_TEMPLATE = kPrf2
 kPrf2Read_TEMPLATE = kStuffEXE
 kPrf2Read_SOURCES  = \
 	kPrf2Read.cpp
@@ -131,7 +132,7 @@ kPrf2Read_LIBS  = \
 PROGRAMS.win.x86 += tst
 tst_TOOL = VCC70
 tst_SDKS = WINPSDK
-tst_CFLAGS = -GH -Gh -Zi -Zl -GR- -GX- -GF- -MD -W3 -wd4244
+tst_CFLAGS = -GH -Gh -Zi -Zl -GR- -GX- -GF- -W3 -wd4244
 tst_SOURCES = tst.c
 tst.c_CFLAGS = -Od
 tst_LDFLAGS = /DEBUG

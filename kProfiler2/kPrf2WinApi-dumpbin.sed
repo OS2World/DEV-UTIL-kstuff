@@ -1,0 +1,78 @@
+# $Id$
+## @file
+# Strip down dumpbin /export output.
+#
+
+#
+# Copyright (c) 2008 knut st. osmundsen <bird-src-spam@anduin.net>
+#
+# This file is part of kProfiler.
+#
+# kProfiler is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
+#
+# kProfiler is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with kProfiler; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+#
+
+
+#
+# State switch
+#
+x
+/^exports$/b exports
+/^summary$/b summary
+b header
+
+#
+# Header
+#
+:header
+x
+/^[[:space:]][[:space:]]*ordinal[[:space:]]*name[[:space:]]*$/b switch_to_exports
+b drop_line
+
+#
+# Exports
+#
+:switch_to_exports
+s/^.*$/exports/
+h
+b drop_line
+
+:exports
+x
+/^[[:space:]][[:space:]]*Summary[[:space:]]*$/b switch_to_summary
+s/^[[:space:]]*//
+s/[[:space:]]*$//
+s/[[:space:]][[:space:]]*/ /g
+/^$/b drop_line
+b end
+
+#
+# Summary
+#
+:switch_to_summary
+s/^.*$/summary/
+h
+b drop_line
+
+:summary
+x
+b drop_line
+
+#
+# Tail
+#
+:drop_line
+d
+:end
+

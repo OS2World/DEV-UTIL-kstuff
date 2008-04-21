@@ -106,7 +106,7 @@ _penter:
         add     rdx, rax
         jmp     .call_prf_enter
 .not_byte_sub:
-        cmp     word [rcx - 5 - 7], 08148h  ; sub rsp, imm8
+        cmp     word [rcx - 5 - 7], 08148h  ; sub rsp, imm32
         jne     .not_dword_sub
         cmp     byte [rcx - 5 - 5], 0ech
         jne     .not_dword_sub

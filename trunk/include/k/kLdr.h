@@ -240,7 +240,7 @@ typedef struct KLDRSEG
     /** Segment flags. */
     KU32            fFlags;
     /** The segment protection. */
-    KPROT        enmProt;
+    KPROT           enmProt;
     /** The size of the segment. */
     KLDRSIZE        cb;
     /** The required segment alignment.

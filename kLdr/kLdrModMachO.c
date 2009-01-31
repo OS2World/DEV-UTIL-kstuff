@@ -130,11 +130,12 @@ typedef struct KLDRMODMACHO
     KLDRADDR                LinkAddress;
     /** The size of the mapped image. */
     KLDRADDR                cbImage;
-    /** The RVA of the Global Offset Table.  */
-    KLDRADDR                GotRVA;
     /** Whether we're creating a global offset table segment.
      * This dependes on the cputype and image type. */
     KBOOL                   fMakeGot;
+    /** The size of a indirect GOT jump stub entry.
+     * This is 0 if not needed. */
+    KU8                     cbJmpStub;
     /** When set the sections in the load command segments must be used when
      * mapping or loading the image. */
     KBOOL                   fMapUsingLoadCommandSections;
@@ -156,6 +157,11 @@ typedef struct KLDRMODMACHO
     KU32                    cchStrings;
     /** Pointer to the loaded string table. */
     char                   *pchStrings;
+
+    /** The RVA of the Global Offset Table. */
+    KLDRADDR                GotRVA;
+    /** The RVA of the indirect GOT jump stubs.  */
+    KLDRADDR                JmpStubsRVA;
 
     /** The number of sections. */
     KU32                    cSections;
@@ -269,6 +275,7 @@ static int kldrModMachODoCreate(PKRDR pRdr, PKLDRMODMACHO *ppModMachO)
     KSIZE cchFilename;
     KSIZE cb;
     KBOOL fMakeGot;
+    KU8 cbJmpStub;
     int rc;
     *ppModMachO = NULL;
 
@@ -300,9 +307,11 @@ static int kldrModMachODoCreate(PKRDR pRdr, PKLDRMODMACHO *ppModMachO)
     {
         case CPU_TYPE_X86:
             fMakeGot = K_FALSE;
+            cbJmpStub = 0;
             break;
         case CPU_TYPE_X86_64:
             fMakeGot = s.Hdr32.filetype == MH_OBJECT;
+            cbJmpStub = fMakeGot ? 8 : 0;
             break;
         default:
             return KLDR_ERR_MACHO_UNSUPPORTED_MACHINE;
@@ -425,8 +434,8 @@ static int kldrModMachODoCreate(PKRDR pRdr, PKLDRMODMACHO *ppModMachO)
         pModMachO->Hdr.reserved = 0;
     pModMachO->LinkAddress = 0;
     pModMachO->cbImage = 0;
-    pModMachO->GotRVA = NIL_KLDRADDR;
     pModMachO->fMakeGot = fMakeGot;
+    pModMachO->cbJmpStub = cbJmpStub;
     pModMachO->fMapUsingLoadCommandSections = K_FALSE;
     pModMachO->offSymbols = 0;
     pModMachO->cSymbols = 0;
@@ -434,6 +443,8 @@ static int kldrModMachODoCreate(PKRDR pRdr, PKLDRMODMACHO *ppModMachO)
     pModMachO->offStrings = 0;
     pModMachO->cchStrings = 0;
     pModMachO->pchStrings = NULL;
+    pModMachO->GotRVA = NIL_KLDRADDR;
+    pModMachO->JmpStubsRVA = NIL_KLDRADDR;
     pModMachO->cSections = cSections;
     pModMachO->paSections = (PKLDRMODMACHOSECT)&pModMachO->aSegments[pModMachO->pMod->cSegments];
 
@@ -1293,11 +1304,25 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
                        || pModMachO->Hdr.magic == IMAGE_MACHO32_SIGNATURE_OE)
                     ? sizeof(KU32)
                     : sizeof(KU64);
+        KU32 cbGot = pModMachO->cSymbols * cbPtr;
+        KU32 cbJmpStubs;
 
         if (pSeg != &pModMachO->pMod->aSegments[0])
             pModMachO->GotRVA = pSeg[-1].RVA + KLDR_ALIGN_ADDR(pSeg[-1].cb, pSeg[-1].Alignment);
         else
             pModMachO->GotRVA = 0;
+
+        if (pModMachO->cbJmpStub)
+        {
+            cbGot = K_ALIGN_Z(cbGot, 64);
+            pModMachO->JmpStubsRVA = pModMachO->GotRVA + cbGot;
+            cbJmpStubs = pModMachO->cbJmpStub * pModMachO->cSymbols;
+        }
+        else
+        {
+            pModMachO->JmpStubsRVA = NIL_KLDRADDR;
+            cbJmpStubs = 0;
+        }
 
         pSeg->pvUser = NULL;
         pSeg->pchName = "GOT";
@@ -1306,7 +1331,7 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
         pSeg->Sel16bit = 0;
         pSeg->fFlags = 0;
         pSeg->enmProt = KPROT_READONLY;
-        pSeg->cb = cbPtr * pModMachO->cSymbols;
+        pSeg->cb = cbGot + cbJmpStubs;
         pSeg->Alignment = 64;
         pSeg->LinkAddress = pModMachO->LinkAddress + pModMachO->GotRVA;
         pSeg->offFile = -1;
@@ -2774,8 +2799,6 @@ static int  kldrModMachOFixupSectionAMD64(PKLDRMODMACHO pModMachO, KU8 *pbSectBi
             default:
                 KLDRMODMACHO_CHECK_RETURN(0, KLDR_ERR_BAD_FIXUP);
         }
-        if (Fixup.r.r_pcrel)
-            SymAddr += Fixup.r.r_address + pFixupSect->LinkAddress;
 
         /* Add symbol / section address. */
         if (Fixup.r.r_extern)
@@ -2805,6 +2828,8 @@ static int  kldrModMachOFixupSectionAMD64(PKLDRMODMACHO pModMachO, KU8 *pbSectBi
                             KLDRMODMACHO_CHECK_RETURN(0, KLDR_ERR_MACHO_BAD_SYMBOL);
                     }
                     SymAddr = sizeof(KU64) * Fixup.r.r_symbolnum + pModMachO->GotRVA + NewBaseAddress;
+                    KLDRMODMACHO_CHECK_RETURN(Fixup.r.r_length == 2, KLDR_ERR_BAD_FIXUP);
+                    SymAddr -= 4;
                     break;
 
                 /* Verify the r_pcrel field for signed fixups on the way into the default case. */
@@ -2822,19 +2847,13 @@ static int  kldrModMachOFixupSectionAMD64(PKLDRMODMACHO pModMachO, KU8 *pbSectBi
                         case X86_64_RELOC_UNSIGNED:
                             KLDRMODMACHO_CHECK_RETURN(!Fixup.r.r_pcrel, KLDR_ERR_BAD_FIXUP);
                             break;
-                        case X86_64_RELOC_SIGNED:
-                            break;
                         case X86_64_RELOC_BRANCH:
-                            switch (Fixup.r.r_length)
-                            {
-                                case 0: SymAddr -= 1; break;
-                                case 1: SymAddr -= 2; break;
-                                case 2: SymAddr -= 4; break;
-                                case 3: SymAddr -= 8; break;
-                            }
+                            KLDRMODMACHO_CHECK_RETURN(Fixup.r.r_length == 2, KLDR_ERR_BAD_FIXUP);
+                            SymAddr -= 4;
                             break;
                         case X86_64_RELOC_SIGNED_1: SymAddr -= 1; break;
                         case X86_64_RELOC_SIGNED_2: SymAddr -= 2; break;
+                        case X86_64_RELOC_SIGNED:
                         case X86_64_RELOC_SIGNED_4: SymAddr -= 4; break;
                         default:
                             KLDRMODMACHO_CHECK_RETURN(0, KLDR_ERR_BAD_FIXUP);
@@ -2852,6 +2871,17 @@ static int  kldrModMachOFixupSectionAMD64(PKLDRMODMACHO pModMachO, KU8 *pbSectBi
                         }
 
                         case MACHO_N_UNDF:
+                            /* branch to an external symbol may have to take a short detour. */
+                            if (    Fixup.r.r_type == X86_64_RELOC_BRANCH
+                                &&      SymAddr + Fixup.r.r_address + pFixupSect->RVA + NewBaseAddress
+                                      - pSym->n_value
+                                      + KU64_C(0x80000000)
+                                    >= KU64_C(0xffffff20))
+                                SymAddr += pModMachO->cbJmpStub * Fixup.r.r_symbolnum + pModMachO->JmpStubsRVA + NewBaseAddress;
+                            else
+                                SymAddr += pSym->n_value;
+                            break;
+
                         case MACHO_N_ABS:
                             SymAddr += pSym->n_value;
                             break;
@@ -3219,16 +3249,42 @@ static int kldrModMachOGetBits(PKLDRMOD pMod, void *pvBits, KLDRADDR BaseAddress
     /*
      * Perform relocations.
      */
-    rc = kldrModMachORelocateBits(pMod, pvBits, BaseAddress, pModMachO->LinkAddress, pfnGetImport, pvUser);
-    if (rc)
-        return rc;
+    return kldrModMachORelocateBits(pMod, pvBits, BaseAddress, pModMachO->LinkAddress, pfnGetImport, pvUser);
+}
+
+
+/** @copydoc kLdrModRelocateBits */
+static int kldrModMachORelocateBits(PKLDRMOD pMod, void *pvBits, KLDRADDR NewBaseAddress, KLDRADDR OldBaseAddress,
+                                    PFNKLDRMODGETIMPORT pfnGetImport, void *pvUser)
+{
+    PKLDRMODMACHO pModMachO = (PKLDRMODMACHO)pMod->pvData;
+    int rc;
+
+    /*
+     * Call workers to do the jobs.
+     */
+    if (pModMachO->Hdr.filetype == MH_OBJECT)
+    {
+        rc = kldrModMachOObjDoImports(pModMachO, pfnGetImport, pvUser);
+        if (!rc)
+            rc = kldrModMachOObjDoFixups(pModMachO, pvBits, NewBaseAddress);
+
+    }
+    else
+        rc = KLDR_ERR_TODO;
+    /*{
+        rc = kldrModMachODoFixups(pModMachO, pvBits, NewBaseAddress, OldBaseAddress, pfnGetImport, pvUser);
+        if (!rc)
+            rc = kldrModMachODoImports(pModMachO, pvBits, pfnGetImport, pvUser);
+    }*/
 
     /*
      * Construct the global offset table if necessary, it's always the last
      * segment when present.
      */
-    if (pModMachO->fMakeGot)
-        rc = kldrModMachOMakeGOT(pModMachO, pvBits, BaseAddress);
+    if (!rc && pModMachO->fMakeGot)
+        rc = kldrModMachOMakeGOT(pModMachO, pvBits, NewBaseAddress);
+
     return rc;
 }
 
@@ -3270,6 +3326,7 @@ static int kldrModMachOMakeGOT(PKLDRMODMACHO pModMachO, void *pvBits, KLDRADDR N
         macho_nlist_64_t const *paSyms = (macho_nlist_64_t const *)pModMachO->pvaSymbols;
         KU64 *paGOT = (KU64 *)((KU8 *)pvBits + pModMachO->GotRVA);
         while (iSym-- > 0)
+        {
             switch (paSyms[iSym].n_type & MACHO_N_TYPE)
             {
                 case MACHO_N_SECT:
@@ -3286,37 +3343,53 @@ static int kldrModMachOMakeGOT(PKLDRMODMACHO pModMachO, void *pvBits, KLDRADDR N
                     paGOT[iSym] = paSyms[iSym].n_value;
                     break;
             }
+        }
+
+        if (pModMachO->JmpStubsRVA != NIL_KLDRADDR)
+        {
+            KU32  iSym = pModMachO->cSymbols;
+            switch (pModMachO->Hdr.cputype)
+            {
+                /*
+                 * AMD64 is simple since the GOT and the indirect jmps are parallel
+                 * arrays with entries of the same size. The relative offset will
+                 * be the the same for each entry, kind of nice. :-)
+                 */
+                case CPU_TYPE_X86_64:
+                {
+                    KU64   *paJmps = (KU64 *)((KU8 *)pvBits + pModMachO->JmpStubsRVA);
+                    KI32    off;
+                    KU64    u64Tmpl;
+                    union
+                    {
+                        KU8     ab[8];
+                        KU64    u64;
+                    }       Tmpl;
+
+                    /* create the template. */
+                    off = pModMachO->GotRVA - (pModMachO->JmpStubsRVA + 6);
+                    Tmpl.ab[0] = 0xff; /* jmp [GOT-entry wrt RIP] */
+                    Tmpl.ab[1] = 0x25;
+                    Tmpl.ab[2] =  off        & 0xff;
+                    Tmpl.ab[3] = (off >>  8) & 0xff;
+                    Tmpl.ab[4] = (off >> 16) & 0xff;
+                    Tmpl.ab[5] = (off >> 24) & 0xff;
+                    Tmpl.ab[6] = 0xcc;
+                    Tmpl.ab[7] = 0xcc;
+                    u64Tmpl = Tmpl.u64;
+
+                    /* copy the template to every jmp table entry. */
+                    while (iSym-- > 0)
+                        paJmps[iSym] = u64Tmpl;
+                    break;
+                }
+
+                default:
+                    KLDRMODMACHO_CHECK_RETURN(0, KLDR_ERR_TODO);
+            }
+        }
     }
     return 0;
-}
-
-
-/** @copydoc kLdrModRelocateBits */
-static int kldrModMachORelocateBits(PKLDRMOD pMod, void *pvBits, KLDRADDR NewBaseAddress, KLDRADDR OldBaseAddress,
-                                    PFNKLDRMODGETIMPORT pfnGetImport, void *pvUser)
-{
-    PKLDRMODMACHO pModMachO = (PKLDRMODMACHO)pMod->pvData;
-    int rc;
-
-    /*
-     * Call workers to do the jobs.
-     */
-    if (pModMachO->Hdr.filetype == MH_OBJECT)
-    {
-        rc = kldrModMachOObjDoImports(pModMachO, pfnGetImport, pvUser);
-        if (!rc)
-            rc = kldrModMachOObjDoFixups(pModMachO, pvBits, NewBaseAddress);
-
-    }
-    else
-        rc = KLDR_ERR_TODO;
-    /*{
-        rc = kldrModMachODoFixups(pModMachO, pvBits, NewBaseAddress, OldBaseAddress, pfnGetImport, pvUser);
-        if (!rc)
-            rc = kldrModMachODoImports(pModMachO, pvBits, pfnGetImport, pvUser);
-    }*/
-
-    return rc;
 }
 
 

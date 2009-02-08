@@ -39,6 +39,7 @@
 
 #if K_OS == K_OS_DARWIN
 # include <mach/mach.h>
+# undef mach_task_self  /* don't use the macro (if we're using bare helpers ) */
 
 #elif K_OS == K_OS_OS2
 # define INCL_BASE

@@ -64,7 +64,7 @@ kHlpBareStatic_SOURCES = \
 	Generic/kHlpStrNLen.c \
 	Generic/kHlpInt2Ascii.c \
 	\
-    Generic/kHlpGetEnvUZ.c \
+	Generic/kHlpGetEnvUZ.c \
 	\
 	Generic/kHlpGetExt.c \
 	Generic/kHlpGetFilename.c \
@@ -77,6 +77,9 @@ kHlpBareStatic_SOURCES = \
 	Bare/kHlpBareEnv.c \
 	Bare/kHlpBareProcess.c \
 	Bare/kHlpBareThread.c \
+
+kHlpBareStatic_SOURCES.darwin = \
+	Bare/kHlpSys-darwin.c
 
 #
 # kCrtStatic
@@ -98,7 +101,7 @@ kHlpCRTStatic_SOURCES = \
 	Generic/kHlpStrNLen.c \
 	Generic/kHlpInt2Ascii.c \
 	\
-    Generic/kHlpGetEnvUZ.c \
+	Generic/kHlpGetEnvUZ.c \
 	\
 	Generic/kHlpGetExt.c \
 	Generic/kHlpGetFilename.c \
@@ -109,6 +112,9 @@ kHlpCRTStatic_SOURCES = \
 	CRT/kHlpCRTAlloc.cpp \
 	CRT/kHlpCRTEnv.cpp \
 	CRT/kHlpCRTString.cpp \
+
+kHlpCRTStatic_SOURCES.darwin = \
+	Bare/kHlpSys-darwin.c
 
 
 # Generate the rules

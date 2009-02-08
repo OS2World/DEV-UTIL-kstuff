@@ -338,7 +338,7 @@ static int kldrModLXDoCreate(PKRDR pRdr, KLDRFOFF offNewHdr, PKLDRMODLX *ppModLX
     pModLX->f32Reserved = 0;
 
     pModLX->offHdr = offNewHdr >= 0 ? offNewHdr : 0;
-    pModLX->Hdr = Hdr;
+    kHlpMemCopy(&pModLX->Hdr, &Hdr, sizeof(Hdr));
 
     pModLX->pbLoaderSection = K_ALIGN_P(pMod->pszFilename + pMod->cchFilename + 1, 16);
     pModLX->pbLoaderSectionLast = pModLX->pbLoaderSection + pModLX->Hdr.e32_ldrsize - 1;

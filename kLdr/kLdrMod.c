@@ -248,7 +248,7 @@ static int kldrModOpenFromRdrSelectImageFromFAT(PKRDR pRdr, KU32 fFlags, KCPUARC
                 break;
 
             default:
-                enmCpuArch = KCPUARCH_UNKNOWN;
+                enmEntryArch = KCPUARCH_UNKNOWN;
                 break;
         }
 
@@ -259,7 +259,7 @@ static int kldrModOpenFromRdrSelectImageFromFAT(PKRDR pRdr, KU32 fFlags, KCPUARC
          * if we're none too picky, remember the first image in case we don't
          * get lucky.
          */
-        if (enmCpuArch == KCPUARCH_X86_32)
+        if (enmEntryArch == enmCpuArch)
         {
             *poffHdr = Arch.offset;
             return 0;
@@ -340,7 +340,10 @@ int kLdrModOpenFromRdr(PKRDR pRdr, KU32 fFlags, KCPUARCH enmCpuArch, PPKLDRMOD p
             rc = kldrModOpenFromRdrSelectImageFromFAT(pRdr, fFlags, enmCpuArch, u.u32, &offHdr);
             if (rc)
                 return rc;
+            if (offHdr)
+                continue;
         }
+        break;
     }
 
 

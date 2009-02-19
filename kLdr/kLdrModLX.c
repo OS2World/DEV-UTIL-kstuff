@@ -146,10 +146,14 @@ static int kldrModLXDoReloc(KU8 *pbPage, int off, KLDRADDR PageAddress, const st
  *          On failure, a non-zero OS specific error code is returned.
  * @param   pOps            Pointer to the registered method table.
  * @param   pRdr            The file provider instance to use.
+ * @param   fFlags          Flags, MBZ.
+ * @param   enmCpuArch      The desired CPU architecture. KCPUARCH_UNKNOWN means
+ *                          anything goes, but with a preference for the current
+ *                          host architecture.
  * @param   offNewHdr       The offset of the new header in MZ files. -1 if not found.
  * @param   ppMod           Where to store the module instance pointer.
  */
-static int kldrModLXCreate(PCKLDRMODOPS pOps, PKRDR pRdr, KLDRFOFF offNewHdr, PPKLDRMOD ppMod)
+static int kldrModLXCreate(PCKLDRMODOPS pOps, PKRDR pRdr, KU32 fFlags, KCPUARCH enmCpuArch, KLDRFOFF offNewHdr, PPKLDRMOD ppMod)
 {
     PKLDRMODLX pModLX;
     int rc;
@@ -160,10 +164,18 @@ static int kldrModLXCreate(PCKLDRMODOPS pOps, PKRDR pRdr, KLDRFOFF offNewHdr, PP
     rc = kldrModLXDoCreate(pRdr, offNewHdr, &pModLX);
     if (!rc)
     {
-        pModLX->pMod->pOps = pOps;
-        pModLX->pMod->u32Magic = KLDRMOD_MAGIC;
-        *ppMod = pModLX->pMod;
-        return 0;
+        /*
+         * Match up against the requested CPU architecture.
+         */
+        if (    enmCpuArch == KCPUARCH_UNKNOWN
+            ||  pModLX->pMod->enmArch == enmCpuArch)
+        {
+            pModLX->pMod->pOps = pOps;
+            pModLX->pMod->u32Magic = KLDRMOD_MAGIC;
+            *ppMod = pModLX->pMod;
+            return 0;
+        }
+        rc = KLDR_ERR_CPU_ARCH_MISMATCH;
     }
     kHlpFree(pModLX);
     return rc;

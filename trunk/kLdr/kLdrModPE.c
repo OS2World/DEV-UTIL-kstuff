@@ -1195,7 +1195,7 @@ static int kldrModPEEnumDbgInfo(PKLDRMOD pMod, const void *pvBits, PFNKLDRENUMDB
 
         rc = pfnCallback(pMod, iDbgInfo,
                          enmDbgInfoType, pDbgDir->MajorVersion, pDbgDir->MinorVersion,
-                         pDbgDir->PointerToRawData ? pDbgDir->PointerToRawData : -1,
+                         pDbgDir->PointerToRawData ? (KLDRFOFF)pDbgDir->PointerToRawData : -1,
                          pDbgDir->AddressOfRawData ? pDbgDir->AddressOfRawData : NIL_KLDRADDR,
                          pDbgDir->SizeOfData,
                          NULL,

@@ -38,8 +38,6 @@
 #if 1 /* testing headers */
 # include <k/kLdrFmts/pe.h>
 # include <k/kLdrFmts/lx.h>
-# include <k/kLdrFmts/elf32.h>
-# include <k/kLdrFmts/elf64.h>
 # include <k/kLdrFmts/mach-o.h>
 #endif
 

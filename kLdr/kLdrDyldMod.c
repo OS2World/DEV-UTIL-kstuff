@@ -76,11 +76,12 @@ int kldrDyldModCreate(PKRDR pRdr, KU32 fFlags, PPKLDRDYLDMOD ppMod)
     *ppMod = NULL;
 
 /** @todo deal with fFlags (exec/dll) */
+/** @todo Check up the cpu architecture. */
 
     /*
      * Try open an module interpreter.
      */
-    rc = kLdrModOpenFromRdr(pRdr, &pRawMod);
+    rc = kLdrModOpenFromRdr(pRdr, 0 /*fFlags*/, KCPUARCH_UNKNOWN, &pRawMod);
     if (rc)
         return kldrDyldFailure(rc, "%s: %rc", kRdrName(pRdr), rc);
 

@@ -1,4 +1,4 @@
-/* $Id $ */
+/* $Id$ */
 /** @file
  * Mach-0 structures, types and defines.
  */

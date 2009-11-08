@@ -38,7 +38,7 @@
  * @remark  This implementation isn't the most efficient, but this short and
  *          easier to manage.
  */
-KAVL_DECL(KAVLNODE *) KAVL_FN(Remove2)(KAVLTROOT *pRoot, KAVLNODE *pNode)
+KAVL_DECL(KAVLNODE *) KAVL_FN(Remove2)(KAVLROOT *pRoot, KAVLNODE *pNode)
 {
 #ifdef KAVL_EQUAL_ALLOWED
     /*
@@ -78,7 +78,7 @@ KAVL_DECL(KAVLNODE *) KAVL_FN(Remove2)(KAVLTROOT *pRoot, KAVLNODE *pNode)
      * if there are duplicates we'll have to unlink it and
      * insert the first duplicate in our place.
      */
-    if (pNode->mpList == KAVL_NODE)
+    if (pNode->mpList == KAVL_NULL)
     {
         KAVL_WRITE_UNLOCK(pRoot);
         KAVL_FN(Remove)(pRoot, pNode->mKey);

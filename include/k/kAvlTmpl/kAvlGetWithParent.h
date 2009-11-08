@@ -57,7 +57,7 @@ KAVL_DECL(KAVLNODE *) KAVL_FN(GetWithParent)(KAVLROOT *pRoot, KAVLNODE **ppParen
             pNode = KAVL_GET_POINTER_NULL(&pNode->mpRight);
     }
 
-    KAVL_UNLOCK(pRoot);
+    KAVL_READ_UNLOCK(pRoot);
 
     *ppParent = pParent;
     return pNode;

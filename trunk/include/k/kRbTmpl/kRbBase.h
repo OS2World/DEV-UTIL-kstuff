@@ -146,8 +146,6 @@
 /*******************************************************************************
 *   Defined Constants And Macros                                               *
 *******************************************************************************/
-#define KAVL_HEIGHTOF(pNode) ((KU8)((pNode) != NULL ? (pNode)->mHeight : 0))
-
 /** @def KRB_GET_POINTER
  * Reads a 'pointer' value.
  *
@@ -261,6 +259,13 @@
 #endif
 
 
+/** Is the node red or black?
+ * @returns true / false
+ * @param   pNode       Pointer to the node in question.
+ * @remarks All NULL pointers are considered black leaf nodes.
+ */
+#define KRB_IS_RED(pNode)                   ( (pNode) != NULL && (pNode)->mfIsRed )
+
 
 /*******************************************************************************
 *   Structures and Typedefs                                                    *
@@ -314,35 +319,135 @@ KRB_DECL(void) KRB_FN(Init)(KRBROOT *pRoot)
 
 
 /**
+ * Rotates the tree to the left (shift direction) and recolors the nodes.
+ *
+ * @pre
+ *
+ *       2                 4
+ *      / \               / \
+ *     1   4     ==>     2   5
+ *        / \           / \
+ *       3   5         1   3
+ *
+ * @endpre
+ *
+ * @returns The new root node.
+ * @param   pRoot           The root node.
+ *
+ * @remarks This will not update any pointer <tt>to</tt> the root node!
+ */
+K_DECL_INLINE(KRBNODE *) KAVL_FN(RotateLeft)(KRBNODE *pRoot)
+{
+    KRBNODE *pNewRoot = pRoot->mRight;
+    pRoot->mRight     = pNewRoot->mLeft;
+    pNewRoot->mLeft   = pRoot;
+
+    pRoot->mfIsRed    = 1;
+    pNewRoot->mfIsRed = 0;
+    return pNewRoot;
+}
+
+
+/**
+ * Rotates the tree to the right (shift direction) and recolors the nodes.
+ *
+ * @pre
+ *
+ *         4             2
+ *        / \           / \
+ *       2   5   ==>   1   4
+ *      / \               / \
+ *     1   3             3   5
+ *
+ * @endpre
+ *
+ * @returns The new root node.
+ * @param   pRoot           The root node.
+ *
+ * @remarks This will not update any pointer <tt>to</tt> the root node!
+ */
+K_DECL_INLINE(KRBNODE *) KAVL_FN(RotateRight)(KRBNODE *pRoot)
+{
+    KRBNODE *pNewRoot = pRoot->mLeft;
+    pRoot->mLeft      = pNewRoot->mRight;
+    pNewRoot->mRight  = pRoot;
+
+    pRoot->mfIsRed    = 1;
+    pNewRoot->mfIsRed = 0;
+    return pNewRoot;
+}
+
+
+/**
+ * Performs a double left rotation with recoloring.
+ *
+ * @pre
+ *
+ *       2               2                    4
+ *      / \             / \                 /   \
+ *     1   6     ==>   1   4       ==>     2     6
+ *        / \             / \             / \   / \
+ *       4   7           3   6           1   3 5   7
+ *      / \                 / \
+ *     3   5               5   7
+ * @endpre
+ *
+ * @returns The new root node.
+ * @param   pRoot           The root node.
+ *
+ * @remarks This will not update any pointer <tt>to</tt> the root node!
+ */
+K_DECL_INLINE(KRBNODE *) KAVL_FN(DoubleRotateLeft)(KRBNODE *pRoot)
+{
+    pRoot->mRight = KAVL_FN(RotateRight)(pRoot->mRight);
+    return KAVL_FN(RotateLeft)(pRoot);
+}
+
+
+/**
+ * Performs a double right rotation with recoloring.
+ *
+ * @pre
+ *         6                 6                4
+ *        / \               / \             /   \
+ *       2   7             4   7           2     6
+ *      / \      ==>      / \      ==>    / \   / \
+ *     1   4             2   5           1   3 5   7
+ *        / \           / \
+ *       3   5         1   3
+ *
+ * @endpre
+ *
+ * @returns The new root node.
+ * @param   pRoot           The root node.
+ *
+ * @remarks This will not update any pointer <tt>to</tt> the root node!
+ */
+K_DECL_INLINE(KRBNODE *) KAVL_FN(DoubleRotateRight)(KRBNODE *pRoot)
+{
+    pRoot->mLeft = KAVL_FN(RotateLeft)(pRoot->mLeft);
+    return KAVL_FN(RotateRight)(pRoot);
+}
+
+
+/**
  * Inserts a node into the Red-Black tree.
  * @returns   K_TRUE if inserted.
  *            K_FALSE if node exists in tree.
  * @param     pRoot     Pointer to the Red-Back tree's root structure.
  * @param     pNode     Pointer to the node which is to be added.
- * @sketch    Find the location of the node (using binary tree algorithm.):
- *            LOOP until NULL leaf pointer
- *            BEGIN
- *                Add node pointer pointer to the AVL-stack.
- *                IF new-node-key < node key THEN
- *                    left
- *                ELSE
- *                    right
- *            END
- *            Fill in leaf node and insert it.
- *            Rebalance the tree.
  */
 KRB_DECL(KBOOL) KRB_FN(Insert)(KRBROOT *pRoot, KRBNODE *pNode)
 {
-    KRB_INT(STACK)     Stack;
     KRBTREEPTR        *ppCurNode = &pRoot->mpRoot;
-    register KRBKEY    Key = pNode->mKey;
+    register KRBKEY    Key       = pNode->mKey;
 #ifdef KRB_RANGE
-    register KRBKEY    KeyLast = pNode->mKeyLast;
+    register KRBKEY    KeyLast   = pNode->mKeyLast;
 #endif
 
 #ifdef KRB_RANGE
     if (Key > KeyLast)
-        return false;
+        return K_FALSE;
 #endif
 
     KRB_WRITE_LOCK(pRoot);

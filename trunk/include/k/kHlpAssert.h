@@ -66,7 +66,7 @@ extern "C" {
         } \
     } while (0)
 
-# define kHlpAssert(expr, stmt) \
+# define kHlpAssertStmt(expr, stmt) \
     do { \
         if (!(expr)) \
         { \
@@ -150,7 +150,7 @@ extern "C" {
         } \
     } while (0)
 
-# define kHlpAssertMsgReturn(expr, msg, stmt, rcRet) \
+# define kHlpAssertMsgStmtReturn(expr, msg, stmt, rcRet) \
     do { \
         if (!(expr)) \
         { \
@@ -173,7 +173,7 @@ extern "C" {
         } \
     } while (0)
 
-# define kHlpAssertMsgReturnVoid(expr, msg, stmt) \
+# define kHlpAssertMsgStmtReturnVoid(expr, msg, stmt) \
     do { \
         if (!(expr)) \
         { \

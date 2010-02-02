@@ -92,7 +92,7 @@
 # define KDBG_CALL
 #endif
 
-#ifdef __DOXYGEN__
+#ifdef DOXYGEN_RUNNING
 /** @def KDBG_BUILDING
  * Define KDBG_BUILDING to indicate that kDbg is being built.
  */
@@ -180,7 +180,7 @@ typedef const KDBGADDR *PCKDBGADDR;
 #if !defined(KDBG_LITTLE_ENDIAN) && !defined(KDBG_BIG_ENDIAN)
 # define KDBG_LITTLE_ENDIAN
 #endif
-#ifdef __DOXYGEN__
+#ifdef DOXYGEN_RUNNING
 # define KDBG_BIG_ENDIAN
 #endif
 

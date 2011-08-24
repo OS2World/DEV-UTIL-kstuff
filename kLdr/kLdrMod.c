@@ -310,7 +310,7 @@ int kLdrModOpenFromRdr(PKRDR pRdr, KU32 fFlags, KCPUARCH enmCpuArch, PPKLDRMOD p
         if (rc)
             return rc;
         if (    u.u16 == IMAGE_DOS_SIGNATURE
-            &&  kRdrSize(pRdr) > sizeof(IMAGE_DOS_HEADER))
+            &&  kRdrSize(pRdr) > (KFOFF)sizeof(IMAGE_DOS_HEADER))
         {
             rc = kRdrRead(pRdr, &u, sizeof(u.u32), K_OFFSETOF(IMAGE_DOS_HEADER, e_lfanew));
             if (rc)

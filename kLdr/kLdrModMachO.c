@@ -2147,10 +2147,15 @@ static int kldrModMachOEnumDbgInfo(PKLDRMOD pMod, const void *pvBits, PFNKLDRENU
     for (iSect = 0; iSect < pModMachO->cSections; iSect++)
     {
         section_32_t *pMachOSect = pModMachO->paSections[iSect].pvMachoSection; /* (32-bit & 64-bit starts the same way) */
-        if (kHlpStrComp(pMachOSect->segname, "DWARF"))
+        char          szTmp[sizeof(pMachOSect->sectname) + 1];
+
+        if (kHlpStrComp(pMachOSect->segname, "__DWARF"))
             continue;
 
-        rc = pfnCallback(pMod, iSect, KLDRDBGINFOTYPE_DWARF, 0, 0, pMachOSect->sectname,
+        kHlpMemCopy(szTmp, pMachOSect->sectname, sizeof(pMachOSect->sectname));
+        szTmp[sizeof(pMachOSect->sectname)] = '\0';
+
+        rc = pfnCallback(pMod, iSect, KLDRDBGINFOTYPE_DWARF, 0, 0, szTmp,
                          pModMachO->paSections[iSect].offFile,
                          pModMachO->paSections[iSect].LinkAddress,
                          pModMachO->paSections[iSect].cb,
@@ -3373,7 +3378,7 @@ static int kldrModMachOMakeGOT(PKLDRMODMACHO pModMachO, void *pvBits, KLDRADDR N
 
         if (pModMachO->JmpStubsRVA != NIL_KLDRADDR)
         {
-            KU32  iSym = pModMachO->cSymbols;
+            iSym = pModMachO->cSymbols;
             switch (pModMachO->Hdr.cputype)
             {
                 /*

@@ -1169,7 +1169,7 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
                                 pSeg->fFlags = 0;
                                 pSeg->enmProt = KPROT_EXECUTE_WRITECOPY; /** @todo fixme! */
                                 pSeg->cb = pSect->size;
-                                pSeg->Alignment = (1 << pSect->align);
+                                pSeg->Alignment = (KLDRADDR)1 << pSect->align;
                                 pSeg->LinkAddress = pSect->addr;
                                 if (pSect->offset)
                                 {
@@ -1304,7 +1304,7 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
                                 pSeg->fFlags = 0;
                                 pSeg->enmProt = KPROT_EXECUTE_WRITECOPY; /** @todo fixme! */
                                 pSeg->cb = pSect->size;
-                                pSeg->Alignment = (1 << pSect->align);
+                                pSeg->Alignment = (KLDRADDR)1 << pSect->align;
                                 pSeg->LinkAddress = pSect->addr;
                                 if (pSect->offset)
                                 {

@@ -49,7 +49,9 @@ extern "C" {
  */
 #ifdef _MSC_VER
 # define kHlpAssertBreakpoint() do { __debugbreak(); } while (0)
-#elif defined(__GNUC__)
+#elif defined(__GNUC__) && K_OS == K_OS_SOLARIS && (K_ARCH == K_ARCH_AMD64 || K_ARCH == K_ARCH_X86_32)
+# define kHlpAssertBreakpoint() do { __asm__ __volatile__ ("int $3"); } while (0)
+#elif defined(__GNUC__) && (K_ARCH == K_ARCH_AMD64 || K_ARCH == K_ARCH_X86_32 || K_ARCH == K_ARCH_X86_16)
 # define kHlpAssertBreakpoint() do { __asm__ __volatile__ ("int3"); } while (0)
 #else
 # error "Port Me"

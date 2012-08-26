@@ -1009,6 +1009,17 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                 /** @todo Check anything here need converting? */
                 break;
 
+            case LC_CODE_SIGNATURE:
+                if (u.pUuid->cmdsize != sizeof(linkedit_data_command_t))
+                    return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
+                break;
+
+            case LC_VERSION_MIN_MACOSX:
+            case LC_VERSION_MIN_IPHONEOS:
+                if (u.pUuid->cmdsize != sizeof(version_min_command_t))
+                    return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
+                break;
+
             case LC_LOADFVMLIB:
             case LC_IDFVMLIB:
             case LC_IDENT:

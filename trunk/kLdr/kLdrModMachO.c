@@ -1670,7 +1670,7 @@ static int kldrModMachOQueryLinkerSymbol(PKLDRMODMACHO pModMachO, PKLDRMOD pMod,
         if (   pModMachO->Hdr.magic == IMAGE_MACHO32_SIGNATURE
             || pModMachO->Hdr.magic == IMAGE_MACHO32_SIGNATURE_OE)
         {
-            section_64_t *pSect = (section_64_t *)pModMachO->aSegments[iSeg].paSections[iSect].pvMachoSection;
+            section_32_t *pSect = (section_32_t *)pModMachO->aSegments[iSeg].paSections[iSect].pvMachoSection;
             uValue = pSect->addr;
             if (!s_aPrefixes[iPrefix].fStart)
                 uValue += pSect->size;

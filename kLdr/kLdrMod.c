@@ -300,6 +300,8 @@ int kLdrModOpenFromRdr(PKRDR pRdr, KU32 fFlags, KCPUARCH enmCpuArch, PPKLDRMOD p
     KLDRFOFF    offHdr = 0;
     int         rc;
 
+    kHlpAssertReturn(!(fFlags & ~KLDRMOD_OPEN_FLAGS_VALID_MASK), KERR_INVALID_PARAMETER);
+
     for (;;)
     {
         /*

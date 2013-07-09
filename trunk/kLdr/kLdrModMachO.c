@@ -598,8 +598,6 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                     &&  (   u.pSeg32->fileoff > cbFile
                          || (KU64)u.pSeg32->fileoff + u.pSeg32->filesize > cbFile))
                     return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
-                if (!u.pSeg32->filesize && u.pSeg32->fileoff)
-                    return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
                 if (u.pSeg32->vmsize < u.pSeg32->filesize)
                     return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
                 if ((u.pSeg32->maxprot & u.pSeg32->initprot) != u.pSeg32->initprot)
@@ -667,7 +665,7 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                             if (pSect->reserved2) /* (reserved 1 is indirect symbol table index)*/
                                 return KLDR_ERR_MACHO_BAD_SECTION;
                             *pfCanLoad = K_FALSE;
-                            fFileBits = 0;
+                            fFileBits = -1; /* __DATA.__got in the 64-bit mach_kernel has bits, any things without bits? */
                             break;
 
                         case S_MOD_INIT_FUNC_POINTERS: /** @todo this requires a query API or flag... (e.g. C++ constructors)  */
@@ -795,8 +793,6 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                     &&  (   u.pSeg64->fileoff > cbFile
                          || u.pSeg64->fileoff + u.pSeg64->filesize > cbFile))
                     return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
-                if (!u.pSeg64->filesize && u.pSeg64->fileoff)
-                    return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
                 if (u.pSeg64->vmsize < u.pSeg64->filesize)
                     return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
                 if ((u.pSeg64->maxprot & u.pSeg64->initprot) != u.pSeg64->initprot)
@@ -864,7 +860,7 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                             if (pSect->reserved2) /* (reserved 1 is indirect symbol table index)*/
                                 return KLDR_ERR_MACHO_BAD_SECTION;
                             *pfCanLoad = K_FALSE;
-                            fFileBits = 0;
+                            fFileBits = -1; /* __DATA.__got in the 64-bit mach_kernel has bits, any things without bits? */
                             break;
 
                         case S_MOD_INIT_FUNC_POINTERS: /** @todo this requires a query API or flag... (e.g. C++ constructors)  */

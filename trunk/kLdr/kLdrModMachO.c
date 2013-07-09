@@ -125,6 +125,8 @@ typedef struct KLDRMODMACHO
     const void             *pvBits;
     /** Pointer to the user mapping. */
     void                   *pvMapping;
+    /** The module open flags. */
+    KU32                    fOpenFlags;
 
     /** The offset of the image. (FAT fun.) */
     KLDRFOFF                offImage;
@@ -187,10 +189,10 @@ static KI32 kldrModMachONumberOfImports(PKLDRMOD pMod, const void *pvBits);
 static int kldrModMachORelocateBits(PKLDRMOD pMod, void *pvBits, KLDRADDR NewBaseAddress, KLDRADDR OldBaseAddress,
                                     PFNKLDRMODGETIMPORT pfnGetImport, void *pvUser);
 
-static int  kldrModMachODoCreate(PKRDR pRdr, KLDRFOFF offImage, PKLDRMODMACHO *ppMod);
+static int  kldrModMachODoCreate(PKRDR pRdr, KLDRFOFF offImage, KU32 fOpenFlags, PKLDRMODMACHO *ppMod);
 static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_header_32_t *pHdr, PKRDR pRdr, KLDRFOFF offImage,
-                                             KU32 *pcSegments, KU32 *pcSections, KU32 *pcbStringPool, PKBOOL pfCanLoad,
-                                             PKLDRADDR pLinkAddress);
+                                             KU32 fOpenFlags, KU32 *pcSegments, KU32 *pcSections, KU32 *pcbStringPool,
+                                             PKBOOL pfCanLoad, PKLDRADDR pLinkAddress);
 static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStringPool, KU32 cbStringPool);
 static int  kldrModMachOAdjustBaseAddress(PKLDRMODMACHO pModMachO, PKLDRADDR pBaseAddress);
 
@@ -247,7 +249,7 @@ static int kldrModMachOCreate(PCKLDRMODOPS pOps, PKRDR pRdr, KU32 fFlags, KCPUAR
     /*
      * Create the instance data and do a minimal header validation.
      */
-    rc = kldrModMachODoCreate(pRdr, offNewHdr == -1 ? 0 : offNewHdr, &pModMachO);
+    rc = kldrModMachODoCreate(pRdr, offNewHdr == -1 ? 0 : offNewHdr, fFlags, &pModMachO);
     if (!rc)
     {
 
@@ -277,7 +279,7 @@ static int kldrModMachOCreate(PCKLDRMODOPS pOps, PKRDR pRdr, KU32 fFlags, KCPUAR
  * Separate function for reading creating the Mach-O module instance to
  * simplify cleanup on failure.
  */
-static int kldrModMachODoCreate(PKRDR pRdr, KLDRFOFF offImage, PKLDRMODMACHO *ppModMachO)
+static int kldrModMachODoCreate(PKRDR pRdr, KLDRFOFF offImage, KU32 fOpenFlags, PKLDRMODMACHO *ppModMachO)
 {
     union
     {
@@ -354,7 +356,7 @@ static int kldrModMachODoCreate(PKRDR pRdr, KLDRFOFF offImage, PKLDRMODMACHO *pp
                   ? sizeof(mach_header_32_t) + offImage
                   : sizeof(mach_header_64_t) + offImage);
     if (!rc)
-        rc = kldrModMachOPreParseLoadCommands(pbLoadCommands, &s.Hdr32, pRdr, offImage,
+        rc = kldrModMachOPreParseLoadCommands(pbLoadCommands, &s.Hdr32, pRdr, offImage, fOpenFlags,
                                               &cSegments, &cSections, &cbStringPool, &fCanLoad, &LinkAddress);
     if (rc)
     {
@@ -455,6 +457,7 @@ static int kldrModMachODoCreate(PKRDR pRdr, KLDRFOFF offImage, PKLDRMODMACHO *pp
     pModMachO->pMod = pMod;
     pModMachO->pvBits = NULL;
     pModMachO->pvMapping = NULL;
+    pModMachO->fOpenFlags = fOpenFlags;
     pModMachO->Hdr = s.Hdr64;
     if (    s.Hdr32.magic == IMAGE_MACHO32_SIGNATURE
         ||  s.Hdr32.magic == IMAGE_MACHO32_SIGNATURE_OE)
@@ -511,8 +514,8 @@ static int kldrModMachODoCreate(PKRDR pRdr, KLDRFOFF offImage, PKLDRMODMACHO *pp
  *                          lowest segment address).
  */
 static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_header_32_t *pHdr, PKRDR pRdr, KLDRFOFF offImage,
-                                             KU32 *pcSegments, KU32 *pcSections, KU32 *pcbStringPool, PKBOOL pfCanLoad,
-                                             PKLDRADDR pLinkAddress)
+                                             KU32 fOpenFlags, KU32 *pcSegments, KU32 *pcSections, KU32 *pcbStringPool,
+                                             PKBOOL pfCanLoad, PKLDRADDR pLinkAddress)
 {
     union
     {
@@ -525,6 +528,7 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
         uuid_command_t       *pUuid;
     } u;
     const KU64 cbFile = kRdrSize(pRdr) - offImage;
+    const char *pchCurSegName = NULL;
     KU32 cSegments = 0;
     KU32 cSections = 0;
     KU32 cbStringPool = 0;
@@ -666,13 +670,21 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                             fFileBits = 0;
                             break;
 
+                        case S_MOD_INIT_FUNC_POINTERS: /** @todo this requires a query API or flag... (e.g. C++ constructors)  */
+                            if (!(fOpenFlags & KLDRMOD_OPEN_FLAGS_FOR_INFO))
+                                return KLDR_ERR_MACHO_UNSUPPORTED_INIT_SECTION;
+                        case S_MOD_TERM_FUNC_POINTERS: /** @todo this requires a query API or flag... (e.g. C++ destructors) */
+                            if (!(fOpenFlags & KLDRMOD_OPEN_FLAGS_FOR_INFO))
+                                return KLDR_ERR_MACHO_UNSUPPORTED_TERM_SECTION;
+                            if (pSect->reserved1 || pSect->reserved2)
+                                return KLDR_ERR_MACHO_BAD_SECTION;
+                            fFileBits = 1;
+                            break; /* ignored */
+
                         case S_LITERAL_POINTERS:
                         case S_INTERPOSING:
                         case S_GB_ZEROFILL:
-                        case S_MOD_INIT_FUNC_POINTERS:
-                            return KLDR_ERR_MACHO_UNSUPPORTED_INIT_SECTION;
-                        case S_MOD_TERM_FUNC_POINTERS:
-                            return KLDR_ERR_MACHO_UNSUPPORTED_TERM_SECTION;
+                            return KLDR_ERR_MACHO_UNSUPPORTED_SECTION;
 
                         default:
                             return KLDR_ERR_MACHO_UNKNOWN_SECTION;
@@ -719,8 +731,8 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                                 break;
 
                             /* a new segment? */
-                            if (    cSections == 1
-                                ||  kHlpStrNComp(pSect->segname, (pSect - 1)->segname, sizeof(pSect->segname)))
+                            if (    !pchCurSegName
+                                ||  kHlpStrNComp(pSect->segname, pchCurSegName, sizeof(pSect->segname)))
                             {
 #if 0 /** @todo This doesn't work because of BSS. */
                                 /* verify that the linker/assembler has ordered sections correctly. */
@@ -734,8 +746,9 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
 #endif
 
                                 /* ok. count it and the string. */
-                                cSegments++;
+                                pchCurSegName = &pSect->segname[0];
                                 cbStringPool += kHlpStrNLen(&pSect->segname[0], sizeof(pSect->segname)) + 1;
+                                cSegments++;
 
                                 /* Link address lower? */
                                 if (*pLinkAddress > u.pSeg32->vmaddr)
@@ -854,21 +867,21 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                             fFileBits = 0;
                             break;
 
+                        case S_MOD_INIT_FUNC_POINTERS: /** @todo this requires a query API or flag... (e.g. C++ constructors)  */
+                            if (!(fOpenFlags & KLDRMOD_OPEN_FLAGS_FOR_INFO))
+                                return KLDR_ERR_MACHO_UNSUPPORTED_INIT_SECTION;
+                        case S_MOD_TERM_FUNC_POINTERS: /** @todo this requires a query API or flag... (e.g. C++ destructors) */
+                            if (!(fOpenFlags & KLDRMOD_OPEN_FLAGS_FOR_INFO))
+                                return KLDR_ERR_MACHO_UNSUPPORTED_TERM_SECTION;
+                            if (pSect->reserved1 || pSect->reserved2)
+                                return KLDR_ERR_MACHO_BAD_SECTION;
+                            fFileBits = 1;
+                            break; /* ignored */
+
                         case S_LITERAL_POINTERS:
                         case S_INTERPOSING:
                         case S_GB_ZEROFILL:
                             return KLDR_ERR_MACHO_UNSUPPORTED_SECTION;
-#if 1 /** @todo this requires a query API or flag... */
-                        case S_MOD_INIT_FUNC_POINTERS:
-                            return KLDR_ERR_MACHO_UNSUPPORTED_INIT_SECTION;
-                        case S_MOD_TERM_FUNC_POINTERS:
-                            return KLDR_ERR_MACHO_UNSUPPORTED_TERM_SECTION;
-#else
-                        case S_MOD_INIT_FUNC_POINTERS:
-                        case S_MOD_TERM_FUNC_POINTERS:
-                            fFileBits = 1;
-                            break; /* ignored */
-#endif
 
                         default:
                             return KLDR_ERR_MACHO_UNKNOWN_SECTION;
@@ -915,8 +928,8 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                                 break;
 
                             /* a new segment? */
-                            if (    !cSections == 1
-                                ||  kHlpStrNComp(pSect->segname, (pSect - 1)->segname, sizeof(pSect->segname)))
+                            if (    !pchCurSegName
+                                ||  kHlpStrNComp(pSect->segname, pchCurSegName, sizeof(pSect->segname)))
                             {
 #if 0 /** @todo This doesn't work because of BSS. */
                                 /* verify that the linker/assembler has ordered sections correctly. */
@@ -930,8 +943,9 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
 #endif
 
                                 /* ok. count it and the string. */
-                                cSegments++;
+                                pchCurSegName = &pSect->segname[0];
                                 cbStringPool += kHlpStrNLen(&pSect->segname[0], sizeof(pSect->segname)) + 1;
+                                cSegments++;
 
                                 /* Link address lower? */
                                 if (*pLinkAddress > u.pSeg64->vmaddr)
@@ -1107,10 +1121,10 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
         const segment_command_64_t *pSeg64;
         const symtab_command_t     *pSymTab;
     } u;
+    const char *pchCurSegName = NULL;
     KU32 cLeft = pModMachO->Hdr.ncmds;
     KU32 cbLeft = pModMachO->Hdr.sizeofcmds;
     const KU8 *pb = pModMachO->pbLoadCommands;
-    int fFirstSegment = 1;
     PKLDRSEG pSeg = &pModMachO->pMod->aSegments[0];
     PKLDRMODMACHOSEG pSegExtra = &pModMachO->aSegments[0];
     PKLDRMODMACHOSECT pSectExtra = pModMachO->paSections;
@@ -1177,8 +1191,8 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
                                 break;
                             }
 
-                            if (    fFirstSegment
-                                ||  kHlpStrNComp(pSect->segname, (pSect - 1)->segname, sizeof(pSect->segname)))
+                            if (    !pchCurSegName
+                                ||  kHlpStrNComp(pSect->segname, pchCurSegName, sizeof(pSect->segname)))
                             {
                                 /* close the previous segment */
                                 if (pSegExtra != &pModMachO->aSegments[0])
@@ -1212,12 +1226,13 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
                                 pSeg->cbMapped = 0;
                                 pSeg->MapAddress = 0;
 
+                                pSegExtra->iOrgSegNo = pSegExtra - &pModMachO->aSegments[0];
                                 pSegExtra->cSections = 0;
                                 pSegExtra->paSections = pSectExtra;
 
                                 pSeg++;
                                 pSegExtra++;
-                                fFirstSegment = 0;
+                                pchCurSegName = &pSect->segname[0];
                             }
                             else
                             {
@@ -1312,8 +1327,8 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
                                 break;
                             }
 
-                            if (    fFirstSegment
-                                ||  kHlpStrNComp(pSect->segname, (pSect - 1)->segname, sizeof(pSect->segname)))
+                            if (    !pchCurSegName
+                                ||  kHlpStrNComp(pSect->segname, pchCurSegName, sizeof(pSect->segname)))
                             {
                                 /* close the previous segment */
                                 if (pSegExtra != &pModMachO->aSegments[0])
@@ -1353,7 +1368,7 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
 
                                 pSeg++;
                                 pSegExtra++;
-                                fFirstSegment = 0;
+                                pchCurSegName = &pSect->segname[0];
                             }
                             else
                             {

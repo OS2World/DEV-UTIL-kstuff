@@ -1978,6 +1978,7 @@ KLDRMODOPS g_kLdrModPEOps =
     NULL /* can execute one is optional */,
     kldrModPEGetStackInfo,
     kldrModPEQueryMainEntrypoint,
+    NULL /* pfnQueryImageUuid */,
     NULL, /** @todo resources */
     NULL, /** @todo resources */
     kldrModPEEnumDbgInfo,

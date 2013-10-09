@@ -164,6 +164,9 @@ typedef struct KLDRMODMACHO
     /** Pointer to the loaded string table. */
     char                   *pchStrings;
 
+    /** The image UUID, all zeros if not found. */
+    KU8                     abImageUuid[16];
+
     /** The RVA of the Global Offset Table. */
     KLDRADDR                GotRVA;
     /** The RVA of the indirect GOT jump stubs.  */
@@ -474,6 +477,7 @@ static int kldrModMachODoCreate(PKRDR pRdr, KLDRFOFF offImage, KU32 fOpenFlags, 
     pModMachO->offStrings = 0;
     pModMachO->cchStrings = 0;
     pModMachO->pchStrings = NULL;
+    kHlpMemSet(pModMachO->abImageUuid, 0, sizeof(pModMachO->abImageUuid));
     pModMachO->GotRVA = NIL_KLDRADDR;
     pModMachO->JmpStubsRVA = NIL_KLDRADDR;
     pModMachO->cSections = cSections;
@@ -1116,6 +1120,7 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
         const segment_command_32_t *pSeg32;
         const segment_command_64_t *pSeg64;
         const symtab_command_t     *pSymTab;
+        const uuid_command_t       *pUuid;
     } u;
     const char *pchCurSegName = NULL;
     KU32 cLeft = pModMachO->Hdr.ncmds;
@@ -1423,6 +1428,10 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
                         pModMachO->cchStrings = u.pSymTab->strsize;
                         break;
                 }
+                break;
+
+            case LC_UUID:
+                kHlpMemCopy(pModMachO->abImageUuid, u.pUuid->uuid, sizeof(pModMachO->abImageUuid));
                 break;
 
             default:
@@ -2403,6 +2412,18 @@ static int kldrModMachOQueryMainEntrypoint(PKLDRMOD pMod, const void *pvBits, KL
 #else
     *pMainEPAddress = NIL_KLDRADDR;
 #endif
+    return 0;
+}
+
+
+/** @copydoc kLdrModQueryImageUuid */
+static int kldrModMachOQueryImageUuid(PKLDRMOD pMod, const void *pvBits, void *pvUuid, KSIZE cbUuid)
+{
+    PKLDRMODMACHO pModMachO = (PKLDRMODMACHO)pMod->pvData;
+    kHlpMemSet(pvUuid, 0, cbUuid);
+    if (kHlpMemComp(pvUuid, pModMachO->abImageUuid, sizeof(pModMachO->abImageUuid)) == 0)
+        return KLDR_ERR_NO_IMAGE_UUID;
+    kHlpMemCopy(pvUuid, pModMachO->abImageUuid, sizeof(pModMachO->abImageUuid));
     return 0;
 }
 
@@ -3738,6 +3759,7 @@ KLDRMODOPS g_kLdrModMachOOps =
     NULL /* can execute one is optional */,
     kldrModMachOGetStackInfo,
     kldrModMachOQueryMainEntrypoint,
+    kldrModMachOQueryImageUuid,
     NULL,
     NULL,
     kldrModMachOEnumDbgInfo,

@@ -2639,6 +2639,7 @@ KLDRMODOPS g_kLdrModLXOps =
     NULL /* can execute one is optional */,
     kldrModLXGetStackInfo,
     kldrModLXQueryMainEntrypoint,
+    NULL /* pfnQueryImageUuid */,
     NULL /* fixme */,
     NULL /* fixme */,
     kldrModLXEnumDbgInfo,

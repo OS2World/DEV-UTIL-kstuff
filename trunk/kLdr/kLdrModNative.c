@@ -1135,6 +1135,7 @@ KLDRMODOPS g_kLdrModNativeOps =
     NULL /* can execute one is optional */,
     kldrModNativeGetStackInfo,
     kldrModNativeQueryMainEntrypoint,
+    NULL /* pfnQueryImageUuid */,
     NULL /* fixme */,
     NULL /* fixme */,
     kldrModNativeEnumDbgInfo,

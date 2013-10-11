@@ -344,7 +344,8 @@ static int kldrModMachODoCreate(PKRDR pRdr, KLDRFOFF offImage, KU32 fOpenFlags, 
     if (   s.Hdr32.filetype != MH_OBJECT
         && s.Hdr32.filetype != MH_EXECUTE
         && s.Hdr32.filetype != MH_DYLIB
-        && s.Hdr32.filetype != MH_DSYM)
+        && s.Hdr32.filetype != MH_DSYM
+        && s.Hdr32.filetype != MH_KEXT_BUNDLE)
         return KLDR_ERR_MACHO_UNSUPPORTED_FILE_TYPE;
 
     /*
@@ -450,6 +451,7 @@ static int kldrModMachODoCreate(PKRDR pRdr, KLDRFOFF offImage, KU32 fOpenFlags, 
         case MH_OBJECT:     pMod->enmType = KLDRTYPE_OBJECT; break;
         case MH_EXECUTE:    pMod->enmType = KLDRTYPE_EXECUTABLE_FIXED; break;
         case MH_DYLIB:      pMod->enmType = KLDRTYPE_SHARED_LIBRARY_RELOCATABLE; break;
+        case MH_KEXT_BUNDLE:pMod->enmType = KLDRTYPE_SHARED_LIBRARY_RELOCATABLE; break;
         case MH_DSYM:       pMod->enmType = KLDRTYPE_DEBUG_INFO; break;
         default:
             return KLDR_ERR_MACHO_UNSUPPORTED_FILE_TYPE;
@@ -724,6 +726,7 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                         case MH_EXECUTE:
                         case MH_DYLIB:
                         case MH_DSYM:
+                        case MH_KEXT_BUNDLE:
                         {
                             cSections++;
 
@@ -919,6 +922,7 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                         case MH_EXECUTE:
                         case MH_DYLIB:
                         case MH_DSYM:
+                        case MH_KEXT_BUNDLE:
                         {
                             cSections++;
 
@@ -1087,6 +1091,7 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
         case MH_EXECUTE:
         case MH_DYLIB:
         case MH_DSYM:
+        case MH_KEXT_BUNDLE:
             if (!cSegments)
                 return KLDR_ERR_MACHO_BAD_OBJECT_FILE;
             break;
@@ -1164,6 +1169,7 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
                         case MH_EXECUTE:
                         case MH_DYLIB:
                         case MH_DSYM:
+                        case MH_KEXT_BUNDLE:
                         {
                             /* Section data extract. */
                             pSectExtra->cb = pSect->size;
@@ -1300,6 +1306,7 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
                         case MH_EXECUTE:
                         case MH_DYLIB:
                         case MH_DSYM:
+                        case MH_KEXT_BUNDLE:
                         {
                             /* Section data extract. */
                             pSectExtra->cb = pSect->size;
@@ -1422,6 +1429,7 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
                     case MH_EXECUTE:
                     case MH_DYLIB: /** @todo ??? */
                     case MH_DSYM:
+                    case MH_KEXT_BUNDLE:
                         pModMachO->offSymbols = u.pSymTab->symoff + pModMachO->offImage;
                         pModMachO->cSymbols = u.pSymTab->nsyms;
                         pModMachO->offStrings = u.pSymTab->stroff + pModMachO->offImage;
@@ -1536,6 +1544,7 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
         case MH_EXECUTE:
         case MH_DYLIB: /** @todo dylib */
         case MH_DSYM:
+        case MH_KEXT_BUNDLE:
         {
             KLDRADDR cb1;
             KSIZE cb2;
@@ -1793,7 +1802,8 @@ static int kldrModMachOQuerySymbol(PKLDRMOD pMod, const void *pvBits, KLDRADDR B
     if (   pModMachO->Hdr.filetype == MH_OBJECT
         || pModMachO->Hdr.filetype == MH_EXECUTE /** @todo dylib, execute, dsym: symbols */
         || pModMachO->Hdr.filetype == MH_DYLIB
-        || pModMachO->Hdr.filetype == MH_DSYM)
+        || pModMachO->Hdr.filetype == MH_DSYM
+        || pModMachO->Hdr.filetype == MH_KEXT_BUNDLE)
     {
         rc = kldrModMachOLoadObjSymTab(pModMachO);
         if (!rc)
@@ -2106,7 +2116,8 @@ static int kldrModMachOEnumSymbols(PKLDRMOD pMod, const void *pvBits, KLDRADDR B
     if (   pModMachO->Hdr.filetype == MH_OBJECT
         || pModMachO->Hdr.filetype == MH_EXECUTE /** @todo dylib, execute, dsym: symbols */
         || pModMachO->Hdr.filetype == MH_DYLIB
-        || pModMachO->Hdr.filetype == MH_DSYM)
+        || pModMachO->Hdr.filetype == MH_DSYM
+        || pModMachO->Hdr.filetype == MH_KEXT_BUNDLE)
     {
         rc = kldrModMachOLoadObjSymTab(pModMachO);
         if (!rc)

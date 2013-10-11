@@ -660,10 +660,9 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
 
                         case S_SYMBOL_STUBS:
                             if (   pSect->reserved1
-                                || pSect->reserved2 < 1
-                                || pSect->reserved2 > 64 )
+                                || pSect->reserved2 > 64 /* stub size */ )
                                 return KLDR_ERR_MACHO_BAD_SECTION;
-                            fFileBits = 0;
+                            fFileBits = 1;
                             break;
 
                         case S_NON_LAZY_SYMBOL_POINTERS:
@@ -1065,6 +1064,13 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
             case LC_TWOLEVEL_HINTS:     /** @todo dylib */
             case LC_LOAD_WEAK_DYLIB:    /** @todo dylib */
             case LC_ID_DYLINKER:        /** @todo dylib */
+            case LC_RPATH:              /** @todo dylib */
+            case LC_SEGMENT_SPLIT_INFO: /** @todo dylib++ */
+            case LC_REEXPORT_DYLIB:     /** @todo dylib */
+            case LC_DYLD_INFO:          /** @todo dylib */
+            case LC_DYLD_INFO_ONLY:     /** @todo dylib */
+            case LC_LOAD_UPWARD_DYLIB:  /** @todo dylib */
+            case LC_FUNCTION_STARTS:    /** @todo dylib++ */
             case LC_DYLD_ENVIRONMENT:   /** @todo dylib */
             case LC_MAIN: /** @todo parse this and find and entry point or smth. */
                 /** @todo valid command size. */

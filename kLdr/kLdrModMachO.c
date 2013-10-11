@@ -856,8 +856,7 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
 
                         case S_SYMBOL_STUBS:
                             if (   pSect->reserved1
-                                || pSect->reserved2 < 1  /* stub size.*/
-                                || pSect->reserved2 > 64 )
+                                || pSect->reserved2 > 64 /* stub size. 0 has been seen (corecrypto.kext) */ )
                                 return KLDR_ERR_MACHO_BAD_SECTION;
                             fFileBits = 1;
                             break;
@@ -1054,15 +1053,30 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                     return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
                 break;
 
+            case LC_SOURCE_VERSION:     /* Harmless. It just gives a clue regarding the source code revision/version. */
+            case LC_DATA_IN_CODE:       /* Ignore */
+            case LC_DYLIB_CODE_SIGN_DRS:/* Ignore */
+                /** @todo valid command size. */
+                break;
+
+            case LC_ID_DYLIB:           /** @todo dylib */
+            case LC_LOAD_DYLIB:         /** @todo dylib */
+            case LC_LOAD_DYLINKER:      /** @todo dylib */
+            case LC_TWOLEVEL_HINTS:     /** @todo dylib */
+            case LC_LOAD_WEAK_DYLIB:    /** @todo dylib */
+            case LC_ID_DYLINKER:        /** @todo dylib */
+            case LC_DYLD_ENVIRONMENT:   /** @todo dylib */
+            case LC_MAIN: /** @todo parse this and find and entry point or smth. */
+                /** @todo valid command size. */
+                if (!(fOpenFlags & KLDRMOD_OPEN_FLAGS_FOR_INFO))
+                    return KLDR_ERR_MACHO_UNSUPPORTED_LOAD_COMMAND;
+                break;
+
             case LC_LOADFVMLIB:
             case LC_IDFVMLIB:
             case LC_IDENT:
             case LC_FVMFILE:
             case LC_PREPAGE:
-            case LC_LOAD_DYLIB:
-            case LC_ID_DYLIB:
-            case LC_LOAD_DYLINKER:
-            case LC_ID_DYLINKER:
             case LC_PREBOUND_DYLIB:
             case LC_ROUTINES:
             case LC_ROUTINES_64:
@@ -1070,9 +1084,7 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
             case LC_SUB_UMBRELLA:
             case LC_SUB_CLIENT:
             case LC_SUB_LIBRARY:
-            case LC_TWOLEVEL_HINTS:
             case LC_PREBIND_CKSUM:
-            case LC_LOAD_WEAK_DYLIB:
             case LC_SYMSEG:
                 return KLDR_ERR_MACHO_UNSUPPORTED_LOAD_COMMAND;
 

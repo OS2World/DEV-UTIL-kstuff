@@ -650,9 +650,7 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                     { \
                         cbStringPool += kHlpStrNLen(&pSrcSeg->segname[0], sizeof(pSrcSeg->segname)) + 1; \
                         cSegments++; \
-                        \
-                        /* Link address lower? */ \
-                        if (*pLinkAddress > pSrcSeg->vmaddr) \
+                        if (cSegments == 1) /* The link address is set by the first segment. */  \
                             *pLinkAddress = pSrcSeg->vmaddr; \
                     } \
                 } while (0)
@@ -810,9 +808,7 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                                     cbStringPool += kHlpStrNLen(&pSect->segname[0], sizeof(pSect->segname)) + 1; \
                                     cbStringPool += kHlpStrNLen(&pSect->sectname[0], sizeof(pSect->sectname)) + 1; \
                                     cSegments++; \
-                                    \
-                                    /* Link address lower? Very unlikely. */ \
-                                    if (*pLinkAddress > pSect->addr) \
+                                    if (cSegments == 1) /* The link address is set by the first segment. */  \
                                         *pLinkAddress = pSect->addr; \
                                 } \
                                 /* fall thru */ \
@@ -1152,8 +1148,6 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
                 #define ADD_SEGMENT_AND_ITS_SECTIONS(a_cBits) \
                 do { \
                     KBOOL fAddSegOuter = K_FALSE; \
-                    \
-                    kHlpAssert(pSrcSeg->vmaddr >= pModMachO->LinkAddress); \
                     \
                     /* \
                      * Check that the segment name is unique.  We couldn't do that \

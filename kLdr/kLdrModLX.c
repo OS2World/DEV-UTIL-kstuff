@@ -301,6 +301,7 @@ static int kldrModLXDoCreate(PKRDR pRdr, KLDRFOFF offNewHdr, PKLDRMODLX *ppModLX
     kHlpMemCopy((char *)pMod->pszFilename, kRdrName(pRdr), cchFilename + 1);
     pMod->pszName = NULL; /* finalized further down */
     pMod->cchName = 0;
+    pMod->fFlags = 0;
     switch (Hdr.e32_cpu)
     {
         case E32CPU286:

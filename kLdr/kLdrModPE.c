@@ -233,6 +233,7 @@ static int kldrModPEDoCreate(PKRDR pRdr, KLDRFOFF offNewHdr, PKLDRMODPE *ppModPE
     kHlpMemCopy((char *)pMod->pszFilename, kRdrName(pRdr), cchFilename + 1);
     pMod->pszName = kHlpGetFilename(pMod->pszFilename);
     pMod->cchName = cchFilename - (pMod->pszName - pMod->pszFilename);
+    pMod->fFlags = 0;
     switch (s.FileHdr.Machine)
     {
         case IMAGE_FILE_MACHINE_I386:

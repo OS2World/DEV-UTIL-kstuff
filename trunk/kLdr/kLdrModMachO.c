@@ -514,8 +514,21 @@ static int kldrModMachODoCreate(PKRDR pRdr, KLDRFOFF offImage, KU32 fOpenFlags, 
  * Converts, validates and preparses the load commands before we carve
  * out the module instance.
  *
- * The conversion that's preformed is format endian to host endian.
- * The preparsing has to do with segment counting, section counting and string pool sizing.
+ * The conversion that's preformed is format endian to host endian.  The
+ * preparsing has to do with segment counting, section counting and string pool
+ * sizing.
+ *
+ * Segment are created in two different ways, depending on the file type.
+ *
+ * For object files there is only one segment command without a given segment
+ * name. The sections inside that segment have different segment names and are
+ * not sorted by their segname attribute.  We create one segment for each
+ * section, with the segment name being 'segname.sectname' in order to hopefully
+ * keep the names unique.  Debug sections does not get segments.
+ *
+ * For non-object files, one kLdr segment is created for each Mach-O segment.
+ * Debug segments is not exposed by kLdr via the kLdr segment table, but via the
+ * debug enumeration callback API.
  *
  * @returns 0 on success.
  * @returns KLDR_ERR_MACHO_* on failure.
@@ -591,8 +604,6 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                 section_32_t   *pSect         = pFirstSect;
                 KU32            cSectionsLeft = pSrcSeg->nsects;
                 KU64            offSect       = 0;
-                KBOOL           fSkipSeg      = !kHlpStrComp(pSrcSeg->segname, "__DWARF")
-                                             || (cSectionsLeft > 0 && (pFirstSect->flags & S_ATTR_DEBUG));
 
                 /* Convert and verify the segment. */
                 KLDRMODMACHO_CHECK_RETURN(u.pLoadCmd->cmdsize >= sizeof(segment_command_32_t), KLDR_ERR_MACHO_BAD_LOAD_COMMAND);
@@ -613,6 +624,9 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                 /* Validation code shared with the 64-bit variant. */
                 #define VALIDATE_AND_ADD_SEGMENT(a_cBits) \
                 do { \
+                    KBOOL fSkipSeg = !kHlpStrComp(pSrcSeg->segname, "__DWARF") /* Note: Not for non-object files. */ \
+                                  || (cSectionsLeft > 0 && (pFirstSect->flags & S_ATTR_DEBUG)); \
+                    \
                     KLDRMODMACHO_CHECK_RETURN(   pSrcSeg->filesize == 0 \
                                               || (   pSrcSeg->fileoff <= cbFile \
                                                   && (KU64)pSrcSeg->fileoff + pSrcSeg->filesize <= cbFile), \
@@ -631,8 +645,8 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                                               KLDR_ERR_MACHO_BAD_OBJECT_FILE); \
                     cSegmentCommands++; \
                     \
-                    /* add the segment. */ \
-                    if (!fSkipSeg) \
+                    /* Add the segment, if not object file. */ \
+                    if (!fSkipSeg && pHdr->filetype != MH_OBJECT) \
                     { \
                         cbStringPool += kHlpStrNLen(&pSrcSeg->segname[0], sizeof(pSrcSeg->segname)) + 1; \
                         cSegments++; \
@@ -671,8 +685,9 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                         int fFileBits; \
                         \
                         /* validate */ \
-                        KLDRMODMACHO_CHECK_RETURN(!kHlpStrComp(pSect->segname, pSrcSeg->segname),\
-                                                  KLDR_ERR_MACHO_BAD_SECTION); \
+                        if (pHdr->filetype != MH_OBJECT) \
+                            KLDRMODMACHO_CHECK_RETURN(!kHlpStrComp(pSect->segname, pSrcSeg->segname),\
+                                                      KLDR_ERR_MACHO_BAD_SECTION); \
                         \
                         switch (pSect->flags & SECTION_TYPE) \
                         { \
@@ -785,10 +800,22 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                                                       KLDR_ERR_MACHO_BAD_SECTION); \
                         } \
                         \
-                        /* validate against file type (pointless?) and count the section. */ \
+                        /* Validate against file type (pointless?) and count the section, for object files add segment. */ \
                         switch (pHdr->filetype) \
                         { \
                             case MH_OBJECT: \
+                                if (   !(pSect->flags & S_ATTR_DEBUG) \
+                                    && kHlpStrComp(pSect->segname, "__DWARF")) \
+                                { \
+                                    cbStringPool += kHlpStrNLen(&pSect->segname[0], sizeof(pSect->segname)) + 1; \
+                                    cbStringPool += kHlpStrNLen(&pSect->sectname[0], sizeof(pSect->sectname)) + 1; \
+                                    cSegments++; \
+                                    \
+                                    /* Link address lower? Very unlikely. */ \
+                                    if (*pLinkAddress > pSect->addr) \
+                                        *pLinkAddress = pSect->addr; \
+                                } \
+                                /* fall thru */ \
                             case MH_EXECUTE: \
                             case MH_DYLIB: \
                             case MH_DSYM: \
@@ -818,8 +845,6 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                 section_64_t   *pSect         = pFirstSect;
                 KU32            cSectionsLeft = pSrcSeg->nsects;
                 KU64            offSect       = 0;
-                KBOOL           fSkipSeg      = !kHlpStrComp(pSrcSeg->segname, "__DWARF")
-                                             || (cSectionsLeft > 0 && (pFirstSect->flags & S_ATTR_DEBUG));
 
                 /* Convert and verify the segment. */
                 KLDRMODMACHO_CHECK_RETURN(u.pLoadCmd->cmdsize >= sizeof(segment_command_64_t), KLDR_ERR_MACHO_BAD_LOAD_COMMAND);
@@ -1071,11 +1096,62 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
                 section_32_t   *pSect         = pFirstSect;
                 KU32            cSectionsLeft = pSrcSeg->nsects;
 
+                /* Adds a segment, used by the macro below and thus shared with the 64-bit segment variant. */
+                #define NEW_SEGMENT(a_cBits, a_achName1, a_fObjFile, a_achName2, a_SegAddr, a_cbSeg, a_fFileBits, a_offFile, a_cbFile) \
+                do { \
+                    pDstSeg->pvUser = NULL; \
+                    pDstSeg->pchName = pbStringPool; \
+                    pDstSeg->cchName = (KU32)kHlpStrNLen(a_achName1, sizeof(a_achName1)); \
+                    kHlpMemCopy(pbStringPool, a_achName1, pDstSeg->cchName); \
+                    pbStringPool += pDstSeg->cchName; \
+                    if (a_fObjFile) \
+                    {   /* MH_OBJECT: Add '.sectname' - sections aren't sorted by segments. */ \
+                        KSIZE cchName2 = kHlpStrNLen(a_achName2, sizeof(a_achName2)); \
+                        *pbStringPool++ = '.'; \
+                        kHlpMemCopy(pbStringPool, a_achName2, cchName2); \
+                        pbStringPool += cchName2; \
+                        pDstSeg->cchName += cchName2; \
+                    } \
+                    *pbStringPool++ = '\0'; \
+                    pDstSeg->SelFlat = 0; \
+                    pDstSeg->Sel16bit = 0; \
+                    pDstSeg->fFlags = 0; \
+                    pDstSeg->enmProt = KPROT_EXECUTE_WRITECOPY; /** @todo fixme! */ \
+                    pDstSeg->cb = (a_cbSeg); \
+                    pDstSeg->Alignment = 1; /* updated while parsing sections. */ \
+                    pDstSeg->LinkAddress = (a_SegAddr); \
+                    if (a_fFileBits) \
+                    { \
+                        pDstSeg->offFile = (a_offFile) + pModMachO->offImage; \
+                        pDstSeg->cbFile  = (a_cbFile); \
+                    } \
+                    else \
+                    { \
+                        pDstSeg->offFile = -1; \
+                        pDstSeg->cbFile  = -1; \
+                    } \
+                    pDstSeg->RVA = (a_SegAddr) - pModMachO->LinkAddress; \
+                    pDstSeg->cbMapped = 0; \
+                    pDstSeg->MapAddress = 0; \
+                    \
+                    pSegExtra->iOrgSegNo = pSegExtra - &pModMachO->aSegments[0]; \
+                    pSegExtra->cSections = 0; \
+                    pSegExtra->paSections = pSectExtra; \
+                } while (0)
+
+                /* Closes the new segment - parter of NEW_SEGMENT. */
+                #define CLOSE_SEGMENT() \
+                do { \
+                    pSegExtra->cSections = pSectExtra - pSegExtra->paSections; \
+                    pSegExtra++; \
+                    pDstSeg++; \
+                } while (0)
+
+
                 /* Shared with the 64-bit variant. */
                 #define ADD_SEGMENT_AND_ITS_SECTIONS(a_cBits) \
                 do { \
-                    KBOOL   fSkipSeg = !kHlpStrComp(pSrcSeg->segname, "__DWARF") \
-                                    || (cSectionsLeft > 0 && (pFirstSect->flags & S_ATTR_DEBUG)); \
+                    KBOOL fAddSegOuter = K_FALSE; \
                     \
                     kHlpAssert(pSrcSeg->vmaddr >= pModMachO->LinkAddress); \
                     \
@@ -1083,45 +1159,22 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
                      * Check that the segment name is unique.  We couldn't do that \
                      * in the preparsing stage. \
                      */ \
-                    for (pSegItr = &pModMachO->pMod->aSegments[0]; pSegItr != pDstSeg; pSegItr++) \
-                        if (!kHlpStrNComp(pSegItr->pchName, pSrcSeg->segname, sizeof(pSrcSeg->segname))) \
-                            KLDRMODMACHO_FAILED_RETURN(KLDR_ERR_DUPLICATE_SEGMENT_NAME); \
+                    if (pModMachO->Hdr.filetype != MH_OBJECT) \
+                        for (pSegItr = &pModMachO->pMod->aSegments[0]; pSegItr != pDstSeg; pSegItr++) \
+                            if (!kHlpStrNComp(pSegItr->pchName, pSrcSeg->segname, sizeof(pSrcSeg->segname))) \
+                                KLDRMODMACHO_FAILED_RETURN(KLDR_ERR_DUPLICATE_SEGMENT_NAME); \
                     \
                     /* \
                      * Create a new segment, unless we're supposed to skip this one. \
                      */ \
-                    if (!fSkipSeg) \
+                    if (   pModMachO->Hdr.filetype != MH_OBJECT \
+                        && (cSectionsLeft == 0 || !(pFirstSect->flags & S_ATTR_DEBUG)) \
+                        && kHlpStrComp(pSrcSeg->segname, "__DWARF") ) \
                     { \
-                        pDstSeg->pvUser = NULL; \
-                        pDstSeg->pchName = pbStringPool; \
-                        pDstSeg->cchName = (KU32)kHlpStrNLen(&pSrcSeg->segname[0], sizeof(pSrcSeg->segname)); \
-                        kHlpMemCopy(pbStringPool, &pSrcSeg->segname[0], pDstSeg->cchName); \
-                        pbStringPool += pDstSeg->cchName; \
-                        *pbStringPool++ = '\0'; \
-                        pDstSeg->SelFlat = 0; \
-                        pDstSeg->Sel16bit = 0; \
-                        pDstSeg->fFlags = 0; \
-                        pDstSeg->enmProt = KPROT_EXECUTE_WRITECOPY; /** @todo fixme! */ \
-                        pDstSeg->cb = pSrcSeg->vmsize; \
-                        pDstSeg->Alignment = 1; /* updated while parsing sections. */ \
-                        pDstSeg->LinkAddress = pSrcSeg->vmaddr; \
-                        if (pSrcSeg->filesize > 0) \
-                        { \
-                            pDstSeg->offFile = pSrcSeg->fileoff + pModMachO->offImage; \
-                            pDstSeg->cbFile  = pSrcSeg->filesize; \
-                        } \
-                        else \
-                        { \
-                            pDstSeg->offFile = -1; \
-                            pDstSeg->cbFile  = -1; \
-                        } \
-                        pDstSeg->RVA = pSrcSeg->vmaddr - pModMachO->LinkAddress; \
-                        pDstSeg->cbMapped = 0; \
-                        pDstSeg->MapAddress = 0; \
-                        \
-                        pSegExtra->iOrgSegNo = pSegExtra - &pModMachO->aSegments[0]; \
-                        pSegExtra->cSections = 0; \
-                        pSegExtra->paSections = pSectExtra; \
+                        NEW_SEGMENT(a_cBits, pSrcSeg->segname, K_FALSE /*a_fObjFile*/, 0 /*a_achName2*/, \
+                                    pSrcSeg->vmaddr, pSrcSeg->vmsize, \
+                                    pSrcSeg->filesize != 0, pSrcSeg->fileoff, pSrcSeg->filesize); \
+                        fAddSegOuter = K_TRUE; \
                     } \
                     \
                     /* \
@@ -1129,6 +1182,19 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
                      */ \
                     while (cSectionsLeft-- > 0) \
                     { \
+                        /* New segment if object file. */ \
+                        KBOOL fAddSegInner = K_FALSE; \
+                        if (   pModMachO->Hdr.filetype == MH_OBJECT \
+                            && !(pSect->flags & S_ATTR_DEBUG) \
+                            && kHlpStrComp(pSrcSeg->segname, "__DWARF") ) \
+                        { \
+                            kHlpAssert(!fAddSegOuter); \
+                            NEW_SEGMENT(a_cBits, pSect->segname, K_TRUE /*a_fObjFile*/, pSect->sectname, \
+                                        pSect->addr, pSect->size, \
+                                        pSect->offset != 0, pSect->offset, pSect->size); \
+                            fAddSegInner = K_TRUE; \
+                        } \
+                        \
                         /* Section data extract. */ \
                         pSectExtra->cb = pSect->size; \
                         pSectExtra->RVA = pSect->addr; \
@@ -1148,21 +1214,20 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
                         pSectExtra->pvMachoSection = pSect; \
                         \
                         /* Update the segment alignment, if we're not skipping it. */ \
-                        if (!fSkipSeg && pDstSeg->Alignment < ((KLDRADDR)1 << pSect->align)) \
+                        if (   (fAddSegOuter || fAddSegInner) \
+                            && pDstSeg->Alignment < ((KLDRADDR)1 << pSect->align)) \
                             pDstSeg->Alignment = (KLDRADDR)1 << pSect->align; \
                         \
-                        /* Next section. */ \
+                        /* Next section, and if object file next segment. */ \
                         pSectExtra++; \
                         pSect++; \
+                        if (fAddSegInner) \
+                            CLOSE_SEGMENT(); \
                     } \
                     \
                     /* Close the segment and advance. */ \
-                    if (!fSkipSeg) \
-                    { \
-                        pSegExtra->cSections = pSectExtra - pSegExtra->paSections; \
-                        pSegExtra++; \
-                        pDstSeg++; \
-                    } \
+                    if (fAddSegOuter) \
+                        CLOSE_SEGMENT(); \
                 } while (0) /* ADD_SEGMENT_AND_ITS_SECTIONS */
 
                 ADD_SEGMENT_AND_ITS_SECTIONS(32);

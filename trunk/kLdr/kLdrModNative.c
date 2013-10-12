@@ -321,6 +321,7 @@ int kLdrModOpenNativeByHandle(KUPTR uHandle, PPKLDRMOD ppMod)
     kHlpMemCopy((char *)pMod->pszFilename, szFilename, cchFilename + 1);
     pMod->pszName = kHlpGetFilename(pMod->pszFilename); /** @todo get soname */
     pMod->cchName = cchFilename - (pMod->pszName - pMod->pszFilename);
+    pMod->fFlags = 0;
 #if defined(__i386__) || defined(__X86__) || defined(_M_IX86)
     pMod->enmCpu = KCPU_I386;
     pMod->enmArch = KCPUARCH_X86_32;

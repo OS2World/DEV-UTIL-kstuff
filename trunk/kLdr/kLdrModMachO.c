@@ -62,6 +62,16 @@
 # define KLDRMODMACHO_CHECK_RETURN(expr, rc)  do { if (!(expr)) { return (rc); } } while (0)
 #endif
 
+/** @def KLDRMODMACHO_CHECK_RETURN
+ * Checks that an expression is true and return if it isn't.
+ * This is a debug aid.
+ */
+#ifdef KLDRMODMACHO_STRICT2
+# define KLDRMODMACHO_FAILED_RETURN(rc)  kHlpAssertFailedReturn(rc)
+#else
+# define KLDRMODMACHO_FAILED_RETURN(rc)  return (rc)
+#endif
+
 
 /*******************************************************************************
 *   Structures and Typedefs                                                    *
@@ -398,6 +408,7 @@ static int kldrModMachODoCreate(PKRDR pRdr, KLDRFOFF offImage, KU32 fOpenFlags, 
     kHlpMemCopy((char *)pMod->pszFilename, kRdrName(pRdr), cchFilename + 1);
     pMod->pszName = kHlpGetFilename(pMod->pszFilename);
     pMod->cchName = cchFilename - (pMod->pszName - pMod->pszFilename);
+    pMod->fFlags = 0;
     switch (s.Hdr32.cputype)
     {
         case CPU_TYPE_X86:
@@ -534,7 +545,6 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
         uuid_command_t       *pUuid;
     } u;
     const KU64 cbFile = kRdrSize(pRdr) - offImage;
-    const char *pchCurSegName = NULL;
     KU32 cSegments = 0;
     KU32 cSections = 0;
     KU32 cbStringPool = 0;
@@ -559,15 +569,13 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
         /*
          * Convert and validate command header.
          */
-        if (cbLeft < sizeof(load_command_t))
-            return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
+        KLDRMODMACHO_CHECK_RETURN(cbLeft >= sizeof(load_command_t), KLDR_ERR_MACHO_BAD_LOAD_COMMAND);
         if (fConvertEndian)
         {
             u.pLoadCmd->cmd = K_E2E_U32(u.pLoadCmd->cmd);
             u.pLoadCmd->cmdsize = K_E2E_U32(u.pLoadCmd->cmdsize);
         }
-        if (u.pLoadCmd->cmdsize > cbLeft)
-            return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
+        KLDRMODMACHO_CHECK_RETURN(u.pLoadCmd->cmdsize <= cbLeft, KLDR_ERR_MACHO_BAD_LOAD_COMMAND);
         cbLeft -= u.pLoadCmd->cmdsize;
         pb += u.pLoadCmd->cmdsize;
 
@@ -578,54 +586,72 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
         {
             case LC_SEGMENT_32:
             {
-                section_32_t *pSect;
-                section_32_t *pFirstSect;
-                KU32 cSectionsLeft;
+                segment_command_32_t *pSrcSeg = (segment_command_32_t *)u.pLoadCmd;
+                section_32_t   *pFirstSect    = (section_32_t *)(pSrcSeg + 1);
+                section_32_t   *pSect         = pFirstSect;
+                KU32            cSectionsLeft = pSrcSeg->nsects;
+                KU64            offSect       = 0;
+                KBOOL           fSkipSeg      = !kHlpStrComp(pSrcSeg->segname, "__DWARF")
+                                             || (cSectionsLeft > 0 && (pFirstSect->flags & S_ATTR_DEBUG));
 
-                /* convert and verify*/
-                if (u.pLoadCmd->cmdsize < sizeof(segment_command_32_t))
-                    return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
-                if (    pHdr->magic != IMAGE_MACHO32_SIGNATURE_OE
-                    &&  pHdr->magic != IMAGE_MACHO32_SIGNATURE)
-                    return KLDR_ERR_MACHO_BIT_MIX;
+                /* Convert and verify the segment. */
+                KLDRMODMACHO_CHECK_RETURN(u.pLoadCmd->cmdsize >= sizeof(segment_command_32_t), KLDR_ERR_MACHO_BAD_LOAD_COMMAND);
+                KLDRMODMACHO_CHECK_RETURN(   pHdr->magic == IMAGE_MACHO32_SIGNATURE_OE
+                                          || pHdr->magic == IMAGE_MACHO32_SIGNATURE, KLDR_ERR_MACHO_BIT_MIX);
                 if (fConvertEndian)
                 {
-                    u.pSeg32->vmaddr   = K_E2E_U32(u.pSeg32->vmaddr);
-                    u.pSeg32->vmsize   = K_E2E_U32(u.pSeg32->vmsize);
-                    u.pSeg32->fileoff  = K_E2E_U32(u.pSeg32->fileoff);
-                    u.pSeg32->filesize = K_E2E_U32(u.pSeg32->filesize);
-                    u.pSeg32->maxprot  = K_E2E_U32(u.pSeg32->maxprot);
-                    u.pSeg32->initprot = K_E2E_U32(u.pSeg32->initprot);
-                    u.pSeg32->nsects   = K_E2E_U32(u.pSeg32->nsects);
-                    u.pSeg32->flags    = K_E2E_U32(u.pSeg32->flags);
+                    pSrcSeg->vmaddr   = K_E2E_U32(pSrcSeg->vmaddr);
+                    pSrcSeg->vmsize   = K_E2E_U32(pSrcSeg->vmsize);
+                    pSrcSeg->fileoff  = K_E2E_U32(pSrcSeg->fileoff);
+                    pSrcSeg->filesize = K_E2E_U32(pSrcSeg->filesize);
+                    pSrcSeg->maxprot  = K_E2E_U32(pSrcSeg->maxprot);
+                    pSrcSeg->initprot = K_E2E_U32(pSrcSeg->initprot);
+                    pSrcSeg->nsects   = K_E2E_U32(pSrcSeg->nsects);
+                    pSrcSeg->flags    = K_E2E_U32(pSrcSeg->flags);
                 }
 
-                if (    u.pSeg32->filesize
-                    &&  (   u.pSeg32->fileoff > cbFile
-                         || (KU64)u.pSeg32->fileoff + u.pSeg32->filesize > cbFile))
-                    return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
-                if (u.pSeg32->vmsize < u.pSeg32->filesize)
-                    return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
-                if ((u.pSeg32->maxprot & u.pSeg32->initprot) != u.pSeg32->initprot)
-                    return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
-                if (u.pSeg32->flags & ~(SG_HIGHVM | SG_FVMLIB | SG_NORELOC | SG_PROTECTED_VERSION_1))
-                    return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
-                if (u.pSeg32->nsects * sizeof(section_32_t) > u.pLoadCmd->cmdsize - sizeof(segment_command_32_t))
-                    return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
-                if (    pHdr->filetype == MH_OBJECT
-                    &&  cSegmentCommands > 0)
-                    return KLDR_ERR_MACHO_BAD_OBJECT_FILE;
-                cSegmentCommands++;
+                /* Validation code shared with the 64-bit variant. */
+                #define VALIDATE_AND_ADD_SEGMENT(a_cBits) \
+                do { \
+                    KLDRMODMACHO_CHECK_RETURN(   pSrcSeg->filesize == 0 \
+                                              || (   pSrcSeg->fileoff <= cbFile \
+                                                  && (KU64)pSrcSeg->fileoff + pSrcSeg->filesize <= cbFile), \
+                                              KLDR_ERR_MACHO_BAD_LOAD_COMMAND); \
+                    KLDRMODMACHO_CHECK_RETURN(pSrcSeg->filesize <= pSrcSeg->vmsize, \
+                                              KLDR_ERR_MACHO_BAD_LOAD_COMMAND); \
+                    KLDRMODMACHO_CHECK_RETURN((pSrcSeg->maxprot & pSrcSeg->initprot) == pSrcSeg->initprot, \
+                                              KLDR_ERR_MACHO_BAD_LOAD_COMMAND); \
+                    KLDRMODMACHO_CHECK_RETURN(!(pSrcSeg->flags & ~(SG_HIGHVM | SG_FVMLIB | SG_NORELOC | SG_PROTECTED_VERSION_1)), \
+                                              KLDR_ERR_MACHO_BAD_LOAD_COMMAND); \
+                    KLDRMODMACHO_CHECK_RETURN(   pSrcSeg->nsects * sizeof(section_##a_cBits##_t) \
+                                              <= u.pLoadCmd->cmdsize - sizeof(segment_command_##a_cBits##_t), \
+                                              KLDR_ERR_MACHO_BAD_LOAD_COMMAND); \
+                    KLDRMODMACHO_CHECK_RETURN(    pHdr->filetype != MH_OBJECT \
+                                              ||  cSegmentCommands == 0,\
+                                              KLDR_ERR_MACHO_BAD_OBJECT_FILE); \
+                    cSegmentCommands++; \
+                    \
+                    /* add the segment. */ \
+                    if (!fSkipSeg) \
+                    { \
+                        cbStringPool += kHlpStrNLen(&pSrcSeg->segname[0], sizeof(pSrcSeg->segname)) + 1; \
+                        cSegments++; \
+                        \
+                        /* Link address lower? */ \
+                        if (*pLinkAddress > pSrcSeg->vmaddr) \
+                            *pLinkAddress = pSrcSeg->vmaddr; \
+                    } \
+                } while (0)
+
+                VALIDATE_AND_ADD_SEGMENT(32);
 
                 /*
-                 * convert, validate and parse the sections.
+                 * Convert, validate and parse the sections.
                  */
-                cSectionsLeft = u.pSeg32->nsects;
-                pFirstSect = pSect = (section_32_t *)(u.pSeg32 + 1);
+                cSectionsLeft = pSrcSeg->nsects;
+                pFirstSect = pSect = (section_32_t *)(pSrcSeg + 1);
                 while (cSectionsLeft-- > 0)
                 {
-                    int fFileBits;
-
                     if (fConvertEndian)
                     {
                         pSect->addr      = K_E2E_U32(pSect->addr);
@@ -639,131 +665,145 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                         pSect->reserved2 = K_E2E_U32(pSect->reserved2);
                     }
 
-                    /* validate */
-                    switch (pSect->flags & SECTION_TYPE)
-                    {
-                        case S_ZEROFILL:
-                            if (pSect->reserved1 || pSect->reserved2)
-                                return KLDR_ERR_MACHO_BAD_SECTION;
-                            fFileBits = 0;
-                            break;
-                        case S_REGULAR:
-                        case S_CSTRING_LITERALS:
-                        case S_COALESCED:
-                        case S_4BYTE_LITERALS:
-                        case S_8BYTE_LITERALS:
-                        case S_16BYTE_LITERALS:
-                            if (pSect->reserved1 || pSect->reserved2)
-                                return KLDR_ERR_MACHO_BAD_SECTION;
-                            fFileBits = 1;
-                            break;
+                    /* Validation code shared with the 64-bit variant. */
+                    #define VALIDATE_AND_ADD_SECTION(a_cBits) \
+                    do { \
+                        int fFileBits; \
+                        \
+                        /* validate */ \
+                        KLDRMODMACHO_CHECK_RETURN(!kHlpStrComp(pSect->segname, pSrcSeg->segname),\
+                                                  KLDR_ERR_MACHO_BAD_SECTION); \
+                        \
+                        switch (pSect->flags & SECTION_TYPE) \
+                        { \
+                            case S_ZEROFILL: \
+                                KLDRMODMACHO_CHECK_RETURN(!pSect->reserved1, KLDR_ERR_MACHO_BAD_SECTION); \
+                                KLDRMODMACHO_CHECK_RETURN(!pSect->reserved2, KLDR_ERR_MACHO_BAD_SECTION); \
+                                fFileBits = 0; \
+                                break; \
+                            case S_REGULAR: \
+                            case S_CSTRING_LITERALS: \
+                            case S_COALESCED: \
+                            case S_4BYTE_LITERALS: \
+                            case S_8BYTE_LITERALS: \
+                            case S_16BYTE_LITERALS: \
+                                KLDRMODMACHO_CHECK_RETURN(!pSect->reserved1, KLDR_ERR_MACHO_BAD_SECTION); \
+                                KLDRMODMACHO_CHECK_RETURN(!pSect->reserved2, KLDR_ERR_MACHO_BAD_SECTION); \
+                                fFileBits = 1; \
+                                break; \
+                            \
+                            case S_SYMBOL_STUBS: \
+                                KLDRMODMACHO_CHECK_RETURN(!pSect->reserved1, KLDR_ERR_MACHO_BAD_SECTION); \
+                                /* reserved2 == stub size. 0 has been seen (corecrypto.kext) */ \
+                                KLDRMODMACHO_CHECK_RETURN(pSect->reserved2 > 64, KLDR_ERR_MACHO_BAD_SECTION); \
+                                fFileBits = 1; \
+                                break; \
+                            \
+                            case S_NON_LAZY_SYMBOL_POINTERS: \
+                            case S_LAZY_SYMBOL_POINTERS: \
+                                /* (reserved 1 = is indirect symbol table index) */ \
+                                KLDRMODMACHO_CHECK_RETURN(!pSect->reserved2, KLDR_ERR_MACHO_BAD_SECTION); \
+                                *pfCanLoad = K_FALSE; \
+                                fFileBits = -1; /* __DATA.__got in the 64-bit mach_kernel has bits, any things without bits? */ \
+                                break; \
+                            \
+                            case S_MOD_INIT_FUNC_POINTERS: \
+                                /** @todo this requires a query API or flag... (e.g. C++ constructors) */ \
+                                KLDRMODMACHO_CHECK_RETURN(fOpenFlags & KLDRMOD_OPEN_FLAGS_FOR_INFO, \
+                                                          KLDR_ERR_MACHO_UNSUPPORTED_INIT_SECTION); \
+                            case S_MOD_TERM_FUNC_POINTERS: \
+                                /** @todo this requires a query API or flag... (e.g. C++ destructors) */ \
+                                KLDRMODMACHO_CHECK_RETURN(fOpenFlags & KLDRMOD_OPEN_FLAGS_FOR_INFO, \
+                                                          KLDR_ERR_MACHO_UNSUPPORTED_TERM_SECTION); \
+                                KLDRMODMACHO_CHECK_RETURN(!pSect->reserved1, KLDR_ERR_MACHO_BAD_SECTION); \
+                                KLDRMODMACHO_CHECK_RETURN(!pSect->reserved2, KLDR_ERR_MACHO_BAD_SECTION); \
+                                fFileBits = 1; \
+                                break; /* ignored */ \
+                            \
+                            case S_LITERAL_POINTERS: \
+                            case S_INTERPOSING: \
+                            case S_GB_ZEROFILL: \
+                                KLDRMODMACHO_FAILED_RETURN(KLDR_ERR_MACHO_UNSUPPORTED_SECTION); \
+                            \
+                            default: \
+                                KLDRMODMACHO_FAILED_RETURN(KLDR_ERR_MACHO_UNKNOWN_SECTION); \
+                        } \
+                        KLDRMODMACHO_CHECK_RETURN(!(pSect->flags & ~(  S_ATTR_PURE_INSTRUCTIONS | S_ATTR_NO_TOC | S_ATTR_STRIP_STATIC_SYMS \
+                                                                     | S_ATTR_NO_DEAD_STRIP | S_ATTR_LIVE_SUPPORT | S_ATTR_SELF_MODIFYING_CODE \
+                                                                     | S_ATTR_DEBUG | S_ATTR_SOME_INSTRUCTIONS | S_ATTR_EXT_RELOC \
+                                                                     | S_ATTR_LOC_RELOC | SECTION_TYPE)), \
+                                                  KLDR_ERR_MACHO_BAD_SECTION); \
+                        KLDRMODMACHO_CHECK_RETURN((pSect->flags & S_ATTR_DEBUG) == (pSect->flags & S_ATTR_DEBUG), \
+                                                  KLDR_ERR_MACHO_MIXED_DEBUG_SECTION_FLAGS); \
+                        \
+                        KLDRMODMACHO_CHECK_RETURN(pSect->addr - pSrcSeg->vmaddr <= pSrcSeg->vmsize, \
+                                                  KLDR_ERR_MACHO_BAD_SECTION); \
+                        KLDRMODMACHO_CHECK_RETURN(pSect->addr - pSrcSeg->vmaddr + pSect->size <= pSrcSeg->vmsize, \
+                                                  KLDR_ERR_MACHO_BAD_SECTION); \
+                        KLDRMODMACHO_CHECK_RETURN(pSect->align < 31, \
+                                                  KLDR_ERR_MACHO_BAD_SECTION); \
+                        KLDRMODMACHO_CHECK_RETURN(!((K_BIT32(pSect->align) - KU32_C(1)) & pSect->addr), \
+                                                  KLDR_ERR_MACHO_BAD_SECTION); \
+                        KLDRMODMACHO_CHECK_RETURN(!((K_BIT32(pSect->align) - KU32_C(1)) & pSrcSeg->vmaddr), \
+                                                  KLDR_ERR_MACHO_BAD_SECTION); \
+                        \
+                        /* Adjust the section offset before we check file offset. */ \
+                        offSect = (offSect + K_BIT64(pSect->align) - KU64_C(1)) & ~(K_BIT64(pSect->align) - KU64_C(1)); \
+                        if (pSect->addr) \
+                        { \
+                            KLDRMODMACHO_CHECK_RETURN(offSect <= pSect->addr - pSrcSeg->vmaddr, KLDR_ERR_MACHO_BAD_SECTION); \
+                            if (offSect < pSect->addr - pSrcSeg->vmaddr) \
+                                offSect = pSect->addr - pSrcSeg->vmaddr; \
+                        } \
+                        \
+                        if (fFileBits && pSect->offset == 0 && pSrcSeg->fileoff == 0 && pHdr->filetype == MH_DSYM) \
+                            fFileBits = 0; \
+                        if (fFileBits) \
+                        { \
+                            KLDRMODMACHO_CHECK_RETURN(pSect->offset == pSrcSeg->fileoff + offSect, \
+                                                      KLDR_ERR_MACHO_NON_CONT_SEG_BITS); \
+                            KLDRMODMACHO_CHECK_RETURN(pSect->offset - pSrcSeg->fileoff <= pSrcSeg->filesize, \
+                                                      KLDR_ERR_MACHO_BAD_SECTION); \
+                            KLDRMODMACHO_CHECK_RETURN(pSect->offset <= cbFile, \
+                                                      KLDR_ERR_MACHO_BAD_SECTION); \
+                            KLDRMODMACHO_CHECK_RETURN((KU64)pSect->offset + pSect->size <= cbFile, \
+                                                      KLDR_ERR_MACHO_BAD_SECTION); \
+                        } \
+                        else \
+                            KLDRMODMACHO_CHECK_RETURN(pSect->offset == 0, KLDR_ERR_MACHO_BAD_SECTION); \
+                        \
+                        if (!pSect->nreloc) \
+                            KLDRMODMACHO_CHECK_RETURN(!pSect->reloff, \
+                                                      KLDR_ERR_MACHO_BAD_SECTION); \
+                        else \
+                        { \
+                            KLDRMODMACHO_CHECK_RETURN(pSect->reloff <= cbFile, \
+                                                      KLDR_ERR_MACHO_BAD_SECTION); \
+                            KLDRMODMACHO_CHECK_RETURN(     (KU64)pSect->reloff \
+                                                         + (KLDRFOFF)pSect->nreloc * sizeof(macho_relocation_info_t) \
+                                                      <= cbFile, \
+                                                      KLDR_ERR_MACHO_BAD_SECTION); \
+                        } \
+                        \
+                        /* validate against file type (pointless?) and count the section. */ \
+                        switch (pHdr->filetype) \
+                        { \
+                            case MH_OBJECT: \
+                            case MH_EXECUTE: \
+                            case MH_DYLIB: \
+                            case MH_DSYM: \
+                            case MH_KEXT_BUNDLE: \
+                                cSections++; \
+                                break; \
+                            default: \
+                                KLDRMODMACHO_FAILED_RETURN(KERR_INVALID_PARAMETER); \
+                        } \
+                        \
+                        /* Advance the section offset, since we're also aligning it. */ \
+                        offSect += pSect->size; \
+                    } while (0) /* VALIDATE_AND_ADD_SECTION */
 
-                        case S_SYMBOL_STUBS:
-                            if (   pSect->reserved1
-                                || pSect->reserved2 > 64 /* stub size */ )
-                                return KLDR_ERR_MACHO_BAD_SECTION;
-                            fFileBits = 1;
-                            break;
-
-                        case S_NON_LAZY_SYMBOL_POINTERS:
-                        case S_LAZY_SYMBOL_POINTERS:
-                            if (pSect->reserved2) /* (reserved 1 is indirect symbol table index)*/
-                                return KLDR_ERR_MACHO_BAD_SECTION;
-                            *pfCanLoad = K_FALSE;
-                            fFileBits = -1; /* __DATA.__got in the 64-bit mach_kernel has bits, any things without bits? */
-                            break;
-
-                        case S_MOD_INIT_FUNC_POINTERS: /** @todo this requires a query API or flag... (e.g. C++ constructors)  */
-                            if (!(fOpenFlags & KLDRMOD_OPEN_FLAGS_FOR_INFO))
-                                return KLDR_ERR_MACHO_UNSUPPORTED_INIT_SECTION;
-                        case S_MOD_TERM_FUNC_POINTERS: /** @todo this requires a query API or flag... (e.g. C++ destructors) */
-                            if (!(fOpenFlags & KLDRMOD_OPEN_FLAGS_FOR_INFO))
-                                return KLDR_ERR_MACHO_UNSUPPORTED_TERM_SECTION;
-                            if (pSect->reserved1 || pSect->reserved2)
-                                return KLDR_ERR_MACHO_BAD_SECTION;
-                            fFileBits = 1;
-                            break; /* ignored */
-
-                        case S_LITERAL_POINTERS:
-                        case S_INTERPOSING:
-                        case S_GB_ZEROFILL:
-                            return KLDR_ERR_MACHO_UNSUPPORTED_SECTION;
-
-                        default:
-                            return KLDR_ERR_MACHO_UNKNOWN_SECTION;
-                    }
-                    if (pSect->flags & ~(  S_ATTR_PURE_INSTRUCTIONS | S_ATTR_NO_TOC | S_ATTR_STRIP_STATIC_SYMS
-                                         | S_ATTR_NO_DEAD_STRIP | S_ATTR_LIVE_SUPPORT | S_ATTR_SELF_MODIFYING_CODE
-                                         | S_ATTR_DEBUG | S_ATTR_SOME_INSTRUCTIONS | S_ATTR_EXT_RELOC
-                                         | S_ATTR_LOC_RELOC | SECTION_TYPE))
-                        return KLDR_ERR_MACHO_BAD_SECTION;
-                    if (    pSect->addr - u.pSeg32->vmaddr > u.pSeg32->vmsize
-                        ||  pSect->addr - u.pSeg32->vmaddr + pSect->size > u.pSeg32->vmsize)
-                        return KLDR_ERR_MACHO_BAD_SECTION;
-                    if (    pSect->align >= 31
-                        ||  (((1 << pSect->align) - 1) & pSect->addr)
-                        ||  (((1 << pSect->align) - 1) & u.pSeg32->vmaddr))
-                        return KLDR_ERR_MACHO_BAD_SECTION;
-                    if (    fFileBits
-                        &&  (   pSect->offset > cbFile
-                             || (KU64)pSect->offset + pSect->size > cbFile))
-                        return KLDR_ERR_MACHO_BAD_SECTION;
-                    if (!fFileBits && pSect->offset)
-                        return KLDR_ERR_MACHO_BAD_SECTION;
-                    if (!pSect->nreloc && pSect->reloff)
-                        return KLDR_ERR_MACHO_BAD_SECTION;
-                    if (    pSect->nreloc
-                        &&  (   pSect->reloff > cbFile
-                             || (KU64)pSect->reloff + (KLDRFOFF)pSect->nreloc * sizeof(macho_relocation_info_t)) > cbFile)
-                        return KLDR_ERR_MACHO_BAD_SECTION;
-
-
-                    /* count segments and strings, calculate image link address. */
-                    switch (pHdr->filetype)
-                    {
-                        case MH_OBJECT:
-                        case MH_EXECUTE:
-                        case MH_DYLIB:
-                        case MH_DSYM:
-                        case MH_KEXT_BUNDLE:
-                        {
-                            cSections++;
-
-                            /* Don't load debug symbols. */
-                            if (   (pSect->flags & S_ATTR_DEBUG)
-                                || !kHlpStrComp(pSect->segname, "__DWARF"))
-                                break;
-
-                            /* a new segment? */
-                            if (    !pchCurSegName
-                                ||  kHlpStrNComp(pSect->segname, pchCurSegName, sizeof(pSect->segname)))
-                            {
-#if 0 /** @todo This doesn't work because of BSS. */
-                                /* verify that the linker/assembler has ordered sections correctly. */
-                                section_32_t *pCur = (pSect - 2);
-                                while ((KUPTR)pCur >= (KUPTR)pFirstSect)
-                                {
-                                    if (!kHlpStrNComp(pCur->segname, pSect->segname, sizeof(pSect->segname)))
-                                        return KLDR_ERR_MACHO_BAD_SECTION_ORDER;
-                                    pCur--;
-                                }
-#endif
-
-                                /* ok. count it and the string. */
-                                pchCurSegName = &pSect->segname[0];
-                                cbStringPool += kHlpStrNLen(&pSect->segname[0], sizeof(pSect->segname)) + 1;
-                                cSegments++;
-
-                                /* Link address lower? */
-                                if (*pLinkAddress > u.pSeg32->vmaddr)
-                                    *pLinkAddress = u.pSeg32->vmaddr;
-                            }
-                            break;
-                        }
-
-                        default:
-                            return KERR_INVALID_PARAMETER;
-                    }
+                    VALIDATE_AND_ADD_SECTION(32);
 
                     /* next */
                     pSect++;
@@ -773,54 +813,37 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
 
             case LC_SEGMENT_64:
             {
-                section_64_t *pSect;
-                section_64_t *pFirstSect;
-                KU32 cSectionsLeft;
+                segment_command_64_t *pSrcSeg = (segment_command_64_t *)u.pLoadCmd;
+                section_64_t   *pFirstSect    = (section_64_t *)(pSrcSeg + 1);
+                section_64_t   *pSect         = pFirstSect;
+                KU32            cSectionsLeft = pSrcSeg->nsects;
+                KU64            offSect       = 0;
+                KBOOL           fSkipSeg      = !kHlpStrComp(pSrcSeg->segname, "__DWARF")
+                                             || (cSectionsLeft > 0 && (pFirstSect->flags & S_ATTR_DEBUG));
 
-                /* convert and verify*/
-                if (u.pLoadCmd->cmdsize < sizeof(segment_command_64_t))
-                    return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
-                if (    pHdr->magic != IMAGE_MACHO64_SIGNATURE_OE
-                    &&  pHdr->magic != IMAGE_MACHO64_SIGNATURE)
-                    return KLDR_ERR_MACHO_BIT_MIX;
+                /* Convert and verify the segment. */
+                KLDRMODMACHO_CHECK_RETURN(u.pLoadCmd->cmdsize >= sizeof(segment_command_64_t), KLDR_ERR_MACHO_BAD_LOAD_COMMAND);
+                KLDRMODMACHO_CHECK_RETURN(   pHdr->magic == IMAGE_MACHO64_SIGNATURE_OE
+                                          || pHdr->magic == IMAGE_MACHO64_SIGNATURE, KLDR_ERR_MACHO_BIT_MIX);
                 if (fConvertEndian)
                 {
-                    u.pSeg64->vmaddr   = K_E2E_U64(u.pSeg64->vmaddr);
-                    u.pSeg64->vmsize   = K_E2E_U64(u.pSeg64->vmsize);
-                    u.pSeg64->fileoff  = K_E2E_U64(u.pSeg64->fileoff);
-                    u.pSeg64->filesize = K_E2E_U64(u.pSeg64->filesize);
-                    u.pSeg64->maxprot  = K_E2E_U32(u.pSeg64->maxprot);
-                    u.pSeg64->initprot = K_E2E_U32(u.pSeg64->initprot);
-                    u.pSeg64->nsects   = K_E2E_U32(u.pSeg64->nsects);
-                    u.pSeg64->flags    = K_E2E_U32(u.pSeg64->flags);
+                    pSrcSeg->vmaddr   = K_E2E_U64(pSrcSeg->vmaddr);
+                    pSrcSeg->vmsize   = K_E2E_U64(pSrcSeg->vmsize);
+                    pSrcSeg->fileoff  = K_E2E_U64(pSrcSeg->fileoff);
+                    pSrcSeg->filesize = K_E2E_U64(pSrcSeg->filesize);
+                    pSrcSeg->maxprot  = K_E2E_U32(pSrcSeg->maxprot);
+                    pSrcSeg->initprot = K_E2E_U32(pSrcSeg->initprot);
+                    pSrcSeg->nsects   = K_E2E_U32(pSrcSeg->nsects);
+                    pSrcSeg->flags    = K_E2E_U32(pSrcSeg->flags);
                 }
 
-                if (    u.pSeg64->filesize
-                    &&  (   u.pSeg64->fileoff > cbFile
-                         || u.pSeg64->fileoff + u.pSeg64->filesize > cbFile))
-                    return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
-                if (u.pSeg64->vmsize < u.pSeg64->filesize)
-                    return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
-                if ((u.pSeg64->maxprot & u.pSeg64->initprot) != u.pSeg64->initprot)
-                    return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
-                if (u.pSeg64->flags & ~(SG_HIGHVM | SG_FVMLIB | SG_NORELOC | SG_PROTECTED_VERSION_1))
-                    return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
-                if (u.pSeg64->nsects * sizeof(section_64_t) > u.pLoadCmd->cmdsize - sizeof(segment_command_64_t))
-                    return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
-                if (    pHdr->filetype == MH_OBJECT
-                    &&  cSegmentCommands > 0)
-                    return KLDR_ERR_MACHO_BAD_OBJECT_FILE;
-                cSegmentCommands++;
+                VALIDATE_AND_ADD_SEGMENT(64);
 
                 /*
-                 * convert, validate and parse the sections.
+                 * Convert, validate and parse the sections.
                  */
-                cSectionsLeft = u.pSeg64->nsects;
-                pFirstSect = pSect = (section_64_t *)(u.pSeg64 + 1);
                 while (cSectionsLeft-- > 0)
                 {
-                    int fFileBits;
-
                     if (fConvertEndian)
                     {
                         pSect->addr      = K_E2E_U64(pSect->addr);
@@ -834,131 +857,7 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                         pSect->reserved2 = K_E2E_U32(pSect->reserved2);
                     }
 
-                    /* validate */
-                    switch (pSect->flags & SECTION_TYPE)
-                    {
-                        case S_ZEROFILL:
-                            if (pSect->reserved1 || pSect->reserved2)
-                                return KLDR_ERR_MACHO_BAD_SECTION;
-                            fFileBits = 0;
-                            break;
-                        case S_REGULAR:
-                        case S_CSTRING_LITERALS:
-                        case S_COALESCED:
-                        case S_4BYTE_LITERALS:
-                        case S_8BYTE_LITERALS:
-                        case S_16BYTE_LITERALS:
-                            if (pSect->reserved1 || pSect->reserved2)
-                                return KLDR_ERR_MACHO_BAD_SECTION;
-                            fFileBits = 1;
-                            break;
-
-                        case S_SYMBOL_STUBS:
-                            if (   pSect->reserved1
-                                || pSect->reserved2 > 64 /* stub size. 0 has been seen (corecrypto.kext) */ )
-                                return KLDR_ERR_MACHO_BAD_SECTION;
-                            fFileBits = 1;
-                            break;
-
-                        case S_NON_LAZY_SYMBOL_POINTERS:
-                        case S_LAZY_SYMBOL_POINTERS:
-                            if (pSect->reserved2) /* (reserved 1 is indirect symbol table index)*/
-                                return KLDR_ERR_MACHO_BAD_SECTION;
-                            *pfCanLoad = K_FALSE;
-                            fFileBits = -1; /* __DATA.__got in the 64-bit mach_kernel has bits, any things without bits? */
-                            break;
-
-                        case S_MOD_INIT_FUNC_POINTERS: /** @todo this requires a query API or flag... (e.g. C++ constructors)  */
-                            if (!(fOpenFlags & KLDRMOD_OPEN_FLAGS_FOR_INFO))
-                                return KLDR_ERR_MACHO_UNSUPPORTED_INIT_SECTION;
-                        case S_MOD_TERM_FUNC_POINTERS: /** @todo this requires a query API or flag... (e.g. C++ destructors) */
-                            if (!(fOpenFlags & KLDRMOD_OPEN_FLAGS_FOR_INFO))
-                                return KLDR_ERR_MACHO_UNSUPPORTED_TERM_SECTION;
-                            if (pSect->reserved1 || pSect->reserved2)
-                                return KLDR_ERR_MACHO_BAD_SECTION;
-                            fFileBits = 1;
-                            break; /* ignored */
-
-                        case S_LITERAL_POINTERS:
-                        case S_INTERPOSING:
-                        case S_GB_ZEROFILL:
-                            return KLDR_ERR_MACHO_UNSUPPORTED_SECTION;
-
-                        default:
-                            return KLDR_ERR_MACHO_UNKNOWN_SECTION;
-                    }
-                    if (pSect->flags & ~(  S_ATTR_PURE_INSTRUCTIONS | S_ATTR_NO_TOC | S_ATTR_STRIP_STATIC_SYMS
-                                         | S_ATTR_NO_DEAD_STRIP | S_ATTR_LIVE_SUPPORT | S_ATTR_SELF_MODIFYING_CODE
-                                         | S_ATTR_DEBUG | S_ATTR_SOME_INSTRUCTIONS | S_ATTR_EXT_RELOC
-                                         | S_ATTR_LOC_RELOC | SECTION_TYPE))
-                        return KLDR_ERR_MACHO_BAD_SECTION;
-                    if (    pSect->addr - u.pSeg64->vmaddr > u.pSeg64->vmsize
-                        ||  pSect->addr - u.pSeg64->vmaddr + pSect->size > u.pSeg64->vmsize)
-                        return KLDR_ERR_MACHO_BAD_SECTION;
-                    if (    pSect->align >= 31
-                        ||  (((1 << pSect->align) - 1) & pSect->addr)
-                        ||  (((1 << pSect->align) - 1) & u.pSeg64->vmaddr))
-                        return KLDR_ERR_MACHO_BAD_SECTION;
-                    if (    fFileBits
-                        &&  (   pSect->offset > cbFile
-                             || (KU64)pSect->offset + pSect->size > cbFile))
-                        return KLDR_ERR_MACHO_BAD_SECTION;
-                    if (!fFileBits && pSect->offset)
-                        return KLDR_ERR_MACHO_BAD_SECTION;
-                    if (!pSect->nreloc && pSect->reloff)
-                        return KLDR_ERR_MACHO_BAD_SECTION;
-                    if (    pSect->nreloc
-                        &&  (   pSect->reloff > cbFile
-                             || (KU64)pSect->reloff + (KLDRFOFF)pSect->nreloc * sizeof(macho_relocation_info_t)) > cbFile)
-                        return KLDR_ERR_MACHO_BAD_SECTION;
-
-
-                    /* count segments and strings, calculate image link address. */
-                    switch (pHdr->filetype)
-                    {
-                        case MH_OBJECT:
-                        case MH_EXECUTE:
-                        case MH_DYLIB:
-                        case MH_DSYM:
-                        case MH_KEXT_BUNDLE:
-                        {
-                            cSections++;
-
-                            /* Don't load debug symbols. (test this) */
-                            if (   (pSect->flags & S_ATTR_DEBUG)
-                                || !kHlpStrComp(pSect->segname, "__DWARF"))
-                                break;
-
-                            /* a new segment? */
-                            if (    !pchCurSegName
-                                ||  kHlpStrNComp(pSect->segname, pchCurSegName, sizeof(pSect->segname)))
-                            {
-#if 0 /** @todo This doesn't work because of BSS. */
-                                /* verify that the linker/assembler has ordered sections correctly. */
-                                section_64_t *pCur = (pSect - 2);
-                                while ((KUPTR)pCur >= (KUPTR)pFirstSect)
-                                {
-                                    if (!kHlpStrNComp(pCur->segname, pSect->segname, sizeof(pSect->segname)))
-                                        return KLDR_ERR_MACHO_BAD_SECTION_ORDER;
-                                    pCur--;
-                                }
-#endif
-
-                                /* ok. count it and the string. */
-                                pchCurSegName = &pSect->segname[0];
-                                cbStringPool += kHlpStrNLen(&pSect->segname[0], sizeof(pSect->segname)) + 1;
-                                cSegments++;
-
-                                /* Link address lower? */
-                                if (*pLinkAddress > u.pSeg64->vmaddr)
-                                    *pLinkAddress = u.pSeg64->vmaddr;
-                            }
-                            break;
-                        }
-
-                        default:
-                            return KERR_INVALID_PARAMETER;
-                    }
+                    VALIDATE_AND_ADD_SECTION(64);
 
                     /* next */
                     pSect++;
@@ -985,16 +884,16 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                       : sizeof(macho_nlist_64_t);
                 if (    u.pSymTab->symoff >= cbFile
                     ||  (KU64)u.pSymTab->symoff + u.pSymTab->nsyms * cbSym > cbFile)
-                    return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
+                    KLDRMODMACHO_FAILED_RETURN(KLDR_ERR_MACHO_BAD_LOAD_COMMAND);
                 if (    u.pSymTab->stroff >= cbFile
                     ||  (KU64)u.pSymTab->stroff + u.pSymTab->strsize > cbFile)
-                    return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
+                    KLDRMODMACHO_FAILED_RETURN(KLDR_ERR_MACHO_BAD_LOAD_COMMAND);
 
                 /* only one string in objects, please. */
                 cSymbolTabs++;
                 if (    pHdr->filetype == MH_OBJECT
                     &&  cSymbolTabs != 1)
-                    return KLDR_ERR_MACHO_BAD_OBJECT_FILE;
+                    KLDRMODMACHO_FAILED_RETURN(KLDR_ERR_MACHO_BAD_OBJECT_FILE);
                 break;
             }
 
@@ -1011,14 +910,14 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                 {
                     /* convert & verify header items ([0] == flavor, [1] == KU32 count). */
                     if (cItemsLeft < 2)
-                        return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
+                        KLDRMODMACHO_FAILED_RETURN(KLDR_ERR_MACHO_BAD_LOAD_COMMAND);
                     if (fConvertEndian)
                     {
                         pu32[0] = K_E2E_U32(pu32[0]);
                         pu32[1] = K_E2E_U32(pu32[1]);
                     }
                     if (pu32[1] + 2 > cItemsLeft)
-                        return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
+                        KLDRMODMACHO_FAILED_RETURN(KLDR_ERR_MACHO_BAD_LOAD_COMMAND);
 
                     /* convert & verify according to flavor. */
                     switch (pu32[0])
@@ -1037,19 +936,19 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
 
             case LC_UUID:
                 if (u.pUuid->cmdsize != sizeof(uuid_command_t))
-                    return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
+                    KLDRMODMACHO_FAILED_RETURN(KLDR_ERR_MACHO_BAD_LOAD_COMMAND);
                 /** @todo Check anything here need converting? */
                 break;
 
             case LC_CODE_SIGNATURE:
                 if (u.pUuid->cmdsize != sizeof(linkedit_data_command_t))
-                    return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
+                    KLDRMODMACHO_FAILED_RETURN(KLDR_ERR_MACHO_BAD_LOAD_COMMAND);
                 break;
 
             case LC_VERSION_MIN_MACOSX:
             case LC_VERSION_MIN_IPHONEOS:
                 if (u.pUuid->cmdsize != sizeof(version_min_command_t))
-                    return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
+                    KLDRMODMACHO_FAILED_RETURN(KLDR_ERR_MACHO_BAD_LOAD_COMMAND);
                 break;
 
             case LC_SOURCE_VERSION:     /* Harmless. It just gives a clue regarding the source code revision/version. */
@@ -1075,7 +974,7 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
             case LC_MAIN: /** @todo parse this and find and entry point or smth. */
                 /** @todo valid command size. */
                 if (!(fOpenFlags & KLDRMOD_OPEN_FLAGS_FOR_INFO))
-                    return KLDR_ERR_MACHO_UNSUPPORTED_LOAD_COMMAND;
+                    KLDRMODMACHO_FAILED_RETURN(KLDR_ERR_MACHO_UNSUPPORTED_LOAD_COMMAND);
                 break;
 
             case LC_LOADFVMLIB:
@@ -1092,16 +991,16 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
             case LC_SUB_LIBRARY:
             case LC_PREBIND_CKSUM:
             case LC_SYMSEG:
-                return KLDR_ERR_MACHO_UNSUPPORTED_LOAD_COMMAND;
+                KLDRMODMACHO_FAILED_RETURN(KLDR_ERR_MACHO_UNSUPPORTED_LOAD_COMMAND);
 
             default:
-                return KLDR_ERR_MACHO_UNKNOWN_LOAD_COMMAND;
+                KLDRMODMACHO_FAILED_RETURN(KLDR_ERR_MACHO_UNKNOWN_LOAD_COMMAND);
         }
     }
 
     /* be strict. */
     if (cbLeft)
-        return KLDR_ERR_MACHO_BAD_LOAD_COMMAND;
+        KLDRMODMACHO_FAILED_RETURN(KLDR_ERR_MACHO_BAD_LOAD_COMMAND);
 
     switch (pHdr->filetype)
     {
@@ -1111,7 +1010,7 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
         case MH_DSYM:
         case MH_KEXT_BUNDLE:
             if (!cSegments)
-                return KLDR_ERR_MACHO_BAD_OBJECT_FILE;
+                KLDRMODMACHO_FAILED_RETURN(KLDR_ERR_MACHO_BAD_OBJECT_FILE);
             break;
     }
 
@@ -1145,15 +1044,14 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
         const symtab_command_t     *pSymTab;
         const uuid_command_t       *pUuid;
     } u;
-    const char *pchCurSegName = NULL;
     KU32 cLeft = pModMachO->Hdr.ncmds;
     KU32 cbLeft = pModMachO->Hdr.sizeofcmds;
     const KU8 *pb = pModMachO->pbLoadCommands;
-    PKLDRSEG pSeg = &pModMachO->pMod->aSegments[0];
+    PKLDRSEG pDstSeg = &pModMachO->pMod->aSegments[0];
     PKLDRMODMACHOSEG pSegExtra = &pModMachO->aSegments[0];
     PKLDRMODMACHOSECT pSectExtra = pModMachO->paSections;
     const KU32 cSegments = pModMachO->pMod->cSegments;
-    KU32 i, c;
+    PKLDRSEG pSegItr;
 
     while (cLeft-- > 0)
     {
@@ -1168,275 +1066,117 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
         {
             case LC_SEGMENT_32:
             {
-                section_32_t *pSect;
-                section_32_t *pFirstSect;
-                KU32 cSectionsLeft;
+                const segment_command_32_t *pSrcSeg = (const segment_command_32_t *)u.pLoadCmd;
+                section_32_t   *pFirstSect    = (section_32_t *)(pSrcSeg + 1);
+                section_32_t   *pSect         = pFirstSect;
+                KU32            cSectionsLeft = pSrcSeg->nsects;
 
-                kHlpAssert(u.pSeg32->vmaddr >= pModMachO->LinkAddress);
+                /* Shared with the 64-bit variant. */
+                #define ADD_SEGMENT_AND_ITS_SECTIONS(a_cBits) \
+                do { \
+                    KBOOL   fSkipSeg = !kHlpStrComp(pSrcSeg->segname, "__DWARF") \
+                                    || (cSectionsLeft > 0 && (pFirstSect->flags & S_ATTR_DEBUG)); \
+                    \
+                    kHlpAssert(pSrcSeg->vmaddr >= pModMachO->LinkAddress); \
+                    \
+                    /* \
+                     * Check that the segment name is unique.  We couldn't do that \
+                     * in the preparsing stage. \
+                     */ \
+                    for (pSegItr = &pModMachO->pMod->aSegments[0]; pSegItr != pDstSeg; pSegItr++) \
+                        if (!kHlpStrNComp(pSegItr->pchName, pSrcSeg->segname, sizeof(pSrcSeg->segname))) \
+                            KLDRMODMACHO_FAILED_RETURN(KLDR_ERR_DUPLICATE_SEGMENT_NAME); \
+                    \
+                    /* \
+                     * Create a new segment, unless we're supposed to skip this one. \
+                     */ \
+                    if (!fSkipSeg) \
+                    { \
+                        pDstSeg->pvUser = NULL; \
+                        pDstSeg->pchName = pbStringPool; \
+                        pDstSeg->cchName = (KU32)kHlpStrNLen(&pSrcSeg->segname[0], sizeof(pSrcSeg->segname)); \
+                        kHlpMemCopy(pbStringPool, &pSrcSeg->segname[0], pDstSeg->cchName); \
+                        pbStringPool += pDstSeg->cchName; \
+                        *pbStringPool++ = '\0'; \
+                        pDstSeg->SelFlat = 0; \
+                        pDstSeg->Sel16bit = 0; \
+                        pDstSeg->fFlags = 0; \
+                        pDstSeg->enmProt = KPROT_EXECUTE_WRITECOPY; /** @todo fixme! */ \
+                        pDstSeg->cb = pSrcSeg->vmsize; \
+                        pDstSeg->Alignment = 1; /* updated while parsing sections. */ \
+                        pDstSeg->LinkAddress = pSrcSeg->vmaddr; \
+                        if (pSrcSeg->filesize > 0) \
+                        { \
+                            pDstSeg->offFile = pSrcSeg->fileoff + pModMachO->offImage; \
+                            pDstSeg->cbFile  = pSrcSeg->filesize; \
+                        } \
+                        else \
+                        { \
+                            pDstSeg->offFile = -1; \
+                            pDstSeg->cbFile  = -1; \
+                        } \
+                        pDstSeg->RVA = pSrcSeg->vmaddr - pModMachO->LinkAddress; \
+                        pDstSeg->cbMapped = 0; \
+                        pDstSeg->MapAddress = 0; \
+                        \
+                        pSegExtra->iOrgSegNo = pSegExtra - &pModMachO->aSegments[0]; \
+                        pSegExtra->cSections = 0; \
+                        pSegExtra->paSections = pSectExtra; \
+                    } \
+                    \
+                    /* \
+                     * Convert and parse the sections. \
+                     */ \
+                    while (cSectionsLeft-- > 0) \
+                    { \
+                        /* Section data extract. */ \
+                        pSectExtra->cb = pSect->size; \
+                        pSectExtra->RVA = pSect->addr; \
+                        pSectExtra->LinkAddress = pSect->addr; \
+                        if (pSect->offset) \
+                            pSectExtra->offFile = pSect->offset + pModMachO->offImage; \
+                        else \
+                            pSectExtra->offFile = -1; \
+                        pSectExtra->cFixups = pSect->nreloc; \
+                        pSectExtra->paFixups = NULL; \
+                        if (pSect->nreloc) \
+                            pSectExtra->offFixups = pSect->reloff + pModMachO->offImage; \
+                        else \
+                            pSectExtra->offFixups = -1; \
+                        pSectExtra->fFlags = pSect->flags; \
+                        pSectExtra->iSegment = pSegExtra - &pModMachO->aSegments[0]; \
+                        pSectExtra->pvMachoSection = pSect; \
+                        \
+                        /* Update the segment alignment, if we're not skipping it. */ \
+                        if (!fSkipSeg && pDstSeg->Alignment < ((KLDRADDR)1 << pSect->align)) \
+                            pDstSeg->Alignment = (KLDRADDR)1 << pSect->align; \
+                        \
+                        /* Next section. */ \
+                        pSectExtra++; \
+                        pSect++; \
+                    } \
+                    \
+                    /* Close the segment and advance. */ \
+                    if (!fSkipSeg) \
+                    { \
+                        pSegExtra->cSections = pSectExtra - pSegExtra->paSections; \
+                        pSegExtra++; \
+                        pDstSeg++; \
+                    } \
+                } while (0) /* ADD_SEGMENT_AND_ITS_SECTIONS */
 
-                /*
-                 * convert, validate and parse the sections.
-                 */
-                cSectionsLeft = u.pSeg32->nsects;
-                pFirstSect = pSect = (section_32_t *)(u.pSeg32 + 1);
-                while (cSectionsLeft-- > 0)
-                {
-                    switch (pModMachO->Hdr.filetype)
-                    {
-                        case MH_OBJECT:
-                        case MH_EXECUTE:
-                        case MH_DYLIB:
-                        case MH_DSYM:
-                        case MH_KEXT_BUNDLE:
-                        {
-                            /* Section data extract. */
-                            pSectExtra->cb = pSect->size;
-                            pSectExtra->RVA = pSect->addr;
-                            pSectExtra->LinkAddress = pSect->addr;
-                            if (pSect->offset)
-                                pSectExtra->offFile = pSect->offset + pModMachO->offImage;
-                            else
-                                pSectExtra->offFile = -1;
-                            pSectExtra->cFixups = pSect->nreloc;
-                            pSectExtra->paFixups = NULL;
-                            if (pSect->nreloc)
-                                pSectExtra->offFixups = pSect->reloff + pModMachO->offImage;
-                            else
-                                pSectExtra->offFixups = -1;
-                            pSectExtra->fFlags = pSect->flags;
-                            pSectExtra->iSegment = pSegExtra - &pModMachO->aSegments[0];
-                            pSectExtra->pvMachoSection = pSect;
-
-                            /* Don't load debug symbols. (test this!) */
-                            if (   (pSect->flags & S_ATTR_DEBUG)
-                                || !kHlpStrComp(pSect->segname, "__DWARF"))
-                            {
-                                pSectExtra++;
-                                /** @todo */
-                                break;
-                            }
-
-                            if (    !pchCurSegName
-                                ||  kHlpStrNComp(pSect->segname, pchCurSegName, sizeof(pSect->segname)))
-                            {
-                                /* close the previous segment */
-                                if (pSegExtra != &pModMachO->aSegments[0])
-                                    pSegExtra[-1].cSections = pSectExtra - pSegExtra[-1].paSections;
-
-                                /* new segment. */
-                                pSeg->pvUser = NULL;
-                                pSeg->pchName = pbStringPool;
-                                pSeg->cchName = (KU32)kHlpStrNLen(&pSect->segname[0], sizeof(pSect->sectname));
-                                kHlpMemCopy(pbStringPool, &pSect->segname[0], pSeg->cchName);
-                                pbStringPool += pSeg->cchName;
-                                *pbStringPool++ = '\0';
-                                pSeg->SelFlat = 0;
-                                pSeg->Sel16bit = 0;
-                                pSeg->fFlags = 0;
-                                pSeg->enmProt = KPROT_EXECUTE_WRITECOPY; /** @todo fixme! */
-                                pSeg->cb = pSect->size;
-                                pSeg->Alignment = (KLDRADDR)1 << pSect->align;
-                                pSeg->LinkAddress = pSect->addr;
-                                if (pSect->offset)
-                                {
-                                    pSeg->offFile = pSect->offset + pModMachO->offImage;
-                                    pSeg->cbFile  = pSect->size;
-                                }
-                                else
-                                {
-                                    pSeg->offFile = -1;
-                                    pSeg->cbFile  = -1;
-                                }
-                                pSeg->RVA = pSect->addr - pModMachO->LinkAddress;
-                                pSeg->cbMapped = 0;
-                                pSeg->MapAddress = 0;
-
-                                pSegExtra->iOrgSegNo = pSegExtra - &pModMachO->aSegments[0];
-                                pSegExtra->cSections = 0;
-                                pSegExtra->paSections = pSectExtra;
-
-                                pSeg++;
-                                pSegExtra++;
-                                pchCurSegName = &pSect->segname[0];
-                            }
-                            else
-                            {
-                                /* update exiting segment */
-                                if (pSeg[-1].Alignment < K_BIT64(pSect->align))
-                                    pSeg[-1].Alignment = K_BIT64(pSect->align);
-                                if (pSect->addr < pSeg[-1].LinkAddress)
-                                    return KLDR_ERR_MACHO_BAD_SECTION; /** @todo move up! */
-
-                                /* If there are file bits, ensure they are in the current flow.
-                                   (yes, we are very very careful here, I know.) */
-                                if (    pSect->offset
-                                    &&  (KU64)pSeg[-1].cbFile == pSeg[-1].cb)
-                                {
-                                    int fOk = (KU64)pSeg[-1].offFile + (pSect->addr - pSeg[-1].LinkAddress) == pSect->offset + (KU64)pModMachO->offImage
-                                           && pSect[-1].offset
-                                           && (KU64)pSeg[-1].offFile + pSeg[-1].cbFile == pSect[-1].offset + (KU64)pModMachO->offImage + pSect[-1].size;
-                                    /* more checks? */
-                                    if (fOk)
-                                        pSeg[-1].cbFile = (KLDRFOFF)(pSect->addr - pSeg[-1].LinkAddress) + pSect->size;
-                                    else
-                                    {
-
-                                        pSeg[-1].cbFile = pSeg[-1].offFile = -1;
-                                        pModMachO->fMapUsingLoadCommandSections = K_TRUE;
-                                    }
-                                }
-                                pSeg[-1].cb = pSect->addr - pSeg[-1].LinkAddress + pSect->size;
-
-                                /** @todo update the protection... */
-                            }
-                            pSectExtra++;
-                            break;
-                        }
-
-                        default:
-                            return KERR_INVALID_PARAMETER;
-                    }
-
-                    /* next */
-                    pSect++;
-                }
+                ADD_SEGMENT_AND_ITS_SECTIONS(32);
                 break;
             }
 
             case LC_SEGMENT_64:
             {
-                section_64_t *pSect;
-                section_64_t *pFirstSect;
-                KU32 cSectionsLeft;
+                const segment_command_64_t *pSrcSeg = (const segment_command_64_t *)u.pLoadCmd;
+                section_64_t   *pFirstSect    = (section_64_t *)(pSrcSeg + 1);
+                section_64_t   *pSect         = pFirstSect;
+                KU32            cSectionsLeft = pSrcSeg->nsects;
 
-                kHlpAssert(u.pSeg64->vmaddr >= pModMachO->LinkAddress);
-
-                /*
-                 * convert, validate and parse the sections.
-                 */
-                cSectionsLeft = u.pSeg64->nsects;
-                pFirstSect = pSect = (section_64_t *)(u.pSeg64 + 1);
-                while (cSectionsLeft-- > 0)
-                {
-                    switch (pModMachO->Hdr.filetype)
-                    {
-                        case MH_OBJECT:
-                        case MH_EXECUTE:
-                        case MH_DYLIB:
-                        case MH_DSYM:
-                        case MH_KEXT_BUNDLE:
-                        {
-                            /* Section data extract. */
-                            pSectExtra->cb = pSect->size;
-                            pSectExtra->RVA = pSect->addr;
-                            pSectExtra->LinkAddress = pSect->addr;
-                            if (pSect->offset)
-                                pSectExtra->offFile = pSect->offset + pModMachO->offImage;
-                            else
-                                pSectExtra->offFile = -1;
-                            pSectExtra->cFixups = pSect->nreloc;
-                            pSectExtra->paFixups = NULL;
-                            if (pSect->nreloc)
-                                pSectExtra->offFixups = pSect->reloff + pModMachO->offImage;
-                            else
-                                pSectExtra->offFixups = -1;
-                            pSectExtra->fFlags = pSect->flags;
-                            pSectExtra->iSegment = pSegExtra - &pModMachO->aSegments[0];
-                            pSectExtra->pvMachoSection = pSect;
-
-                            /* Don't load debug symbols. (test this!) */
-                            if (   (pSect->flags & S_ATTR_DEBUG)
-                                || !kHlpStrComp(pSect->segname, "__DWARF"))
-                            {
-                                pSectExtra++;
-                                /** @todo */
-                                break;
-                            }
-
-                            if (    !pchCurSegName
-                                ||  kHlpStrNComp(pSect->segname, pchCurSegName, sizeof(pSect->segname)))
-                            {
-                                /* close the previous segment */
-                                if (pSegExtra != &pModMachO->aSegments[0])
-                                    pSegExtra[-1].cSections = pSectExtra - pSegExtra[-1].paSections;
-
-                                /* new segment. */
-                                pSeg->pvUser = NULL;
-                                pSeg->pchName = pbStringPool;
-                                pSeg->cchName = (KU32)kHlpStrNLen(&pSect->segname[0], sizeof(pSect->sectname));
-                                kHlpMemCopy(pbStringPool, &pSect->segname[0], pSeg->cchName);
-                                pbStringPool += pSeg->cchName;
-                                *pbStringPool++ = '\0';
-                                pSeg->SelFlat = 0;
-                                pSeg->Sel16bit = 0;
-                                pSeg->fFlags = 0;
-                                pSeg->enmProt = KPROT_EXECUTE_WRITECOPY; /** @todo fixme! */
-                                pSeg->cb = pSect->size;
-                                pSeg->Alignment = (KLDRADDR)1 << pSect->align;
-                                pSeg->LinkAddress = pSect->addr;
-                                if (pSect->offset)
-                                {
-                                    pSeg->offFile = pSect->offset + pModMachO->offImage;
-                                    pSeg->cbFile  = pSect->size;
-                                }
-                                else
-                                {
-                                    pSeg->offFile = -1;
-                                    pSeg->cbFile  = -1;
-                                }
-                                pSeg->RVA = pSect->addr - pModMachO->LinkAddress;
-                                pSeg->cbMapped = 0;
-                                pSeg->MapAddress = 0;
-
-                                pSegExtra->iOrgSegNo = pSegExtra - &pModMachO->aSegments[0];
-                                pSegExtra->cSections = 0;
-                                pSegExtra->paSections = pSectExtra;
-
-                                pSeg++;
-                                pSegExtra++;
-                                pchCurSegName = &pSect->segname[0];
-                            }
-                            else
-                            {
-                                /* update exiting segment */
-                                if (pSeg[-1].Alignment < K_BIT64(pSect->align))
-                                    pSeg[-1].Alignment = K_BIT64(pSect->align);
-                                if (pSect->addr < pSeg[-1].LinkAddress)
-                                    return KLDR_ERR_MACHO_BAD_SECTION; /** @todo move up! */
-
-                                /* If there are file bits, ensure they are in the current flow.
-                                   (yes, we are very very careful here, I know.) */
-                                if (    pSect->offset
-                                    &&  (KU64)pSeg[-1].cbFile == pSeg[-1].cb)
-                                {
-                                    int fOk = (KU64)pSeg[-1].offFile + (pSect->addr - pSeg[-1].LinkAddress) == pSect->offset + (KU64)pModMachO->offImage
-                                           && pSect[-1].offset
-                                           && (KU64)pSeg[-1].offFile + pSeg[-1].cbFile == pSect[-1].offset + (KU64)pModMachO->offImage + pSect[-1].size;
-                                    /* more checks? */
-                                    if (fOk)
-                                        pSeg[-1].cbFile = (KLDRFOFF)(pSect->addr - pSeg[-1].LinkAddress) + pSect->size;
-                                    else
-                                    {
-
-                                        pSeg[-1].cbFile = pSeg[-1].offFile = -1;
-                                        pModMachO->fMapUsingLoadCommandSections = K_TRUE;
-                                    }
-                                }
-                                pSeg[-1].cb = pSect->addr - pSeg[-1].LinkAddress + pSect->size;
-
-                                /** @todo update the protection... */
-                            }
-                            pSectExtra++;
-                            break;
-                        }
-
-                        default:
-                            return KERR_INVALID_PARAMETER;
-                    }
-
-                    /* next */
-                    pSect++;
-                }
+                ADD_SEGMENT_AND_ITS_SECTIONS(64);
                 break;
             }
 
@@ -1465,42 +1205,99 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
         } /* command switch */
     } /* while more commands */
 
-    /*
-     * Close the last segment (if any).
-     */
-    if (pSegExtra != &pModMachO->aSegments[0])
-        pSegExtra[-1].cSections = pSectExtra - pSegExtra[-1].paSections;
+    kHlpAssert(pDstSeg == &pModMachO->pMod->aSegments[cSegments - pModMachO->fMakeGot]);
 
-    /*
-     * Make sure the segments are sorted, or we'll get screwed further down.
-     */
-    c = pSeg - &pModMachO->pMod->aSegments[0];
-    pSeg = &pModMachO->pMod->aSegments[0];
-    for (i = 0; i < c - 1; i++)
+#if 0
     {
-        KLDRADDR LinkAddress = pSeg[i + 1].LinkAddress;
-        if (LinkAddress < pSeg[i].LinkAddress)
+        /*
+         * Make sure the segments are sorted by link address, or we'll get screwed
+         * further down.
+         */
+        KLDRADDR cb1;
+        KSIZE cb2;
+        KU32 i;
+        KU32 c = pDstSeg - &pModMachO->pMod->aSegments[0];
+
+        pDstSeg = &pModMachO->pMod->aSegments[0];
+        for (i = 0; i < c - 1; i++)
         {
-            /* Gotta move the next segment, find the correct location. */
-            KLDRMODMACHOSEG TmpSegExtra;
-            KLDRSEG TmpSeg;
-            KU32 j = i;
-            KU32 cShift = 1;
+            KLDRADDR LinkAddress = pDstSeg[i + 1].LinkAddress;
+            if (LinkAddress < pDstSeg[i].LinkAddress)
+            {
+                /* Gotta move the next segment, find the correct location. */
+                KLDRMODMACHOSEG TmpSegExtra;
+                KLDRSEG TmpSeg;
+                KU32 j = i;
+                KU32 cShift = 1;
 
-            while (j > 0 && LinkAddress < pSeg[j - 1].LinkAddress)
-                j--, cShift++;
+                while (j > 0 && LinkAddress < pDstSeg[j - 1].LinkAddress)
+                    j--, cShift++;
 
-            TmpSegExtra = pModMachO->aSegments[i + 1];
-            kHlpMemMove(&pModMachO->aSegments[j + 1], &pModMachO->aSegments[j],
-                        cShift * sizeof(pModMachO->aSegments[0]));
-            pModMachO->aSegments[j] = TmpSegExtra;
+                TmpSegExtra = pModMachO->aSegments[i + 1];
+                kHlpMemMove(&pModMachO->aSegments[j + 1], &pModMachO->aSegments[j],
+                            cShift * sizeof(pModMachO->aSegments[0]));
+                pModMachO->aSegments[j] = TmpSegExtra;
 
-            TmpSeg = pSeg[i + 1];
-            kHlpMemMove(&pSeg[j + 1], &pSeg[j], cShift * sizeof(pSeg[0]));
-            pSeg[j] = TmpSeg;
+                TmpSeg = pDstSeg[i + 1];
+                kHlpMemMove(&pDstSeg[j + 1], &pDstSeg[j], cShift * sizeof(pDstSeg[0]));
+                pDstSeg[j] = TmpSeg;
+            }
         }
+
+        /*
+         * Adjust mapping addresses calculating the image size.
+         */
+        pDstSeg = &pModMachO->pMod->aSegments[0];
+        for (i = 0; i < cSegments - 1; i++)
+        {
+            cb1 = pDstSeg[i + 1].LinkAddress - pDstSeg[i].LinkAddress;
+            cb2 = (KSIZE)cb1;
+            pDstSeg[i].cbMapped = cb2 == cb1 ? cb2 : ~(KSIZE)0;
+        }
+        cb1 = KLDR_ALIGN_ADDR(pDstSeg[i].cb, pDstSeg[i].Alignment);
+        cb2 = (KSIZE)cb1;
+        pDstSeg[i].cbMapped = cb2 == cb1 ? cb2 : ~(KSIZE)0;
+
+        pModMachO->cbImage = pDstSeg[i].RVA + cb1;
     }
-    pSeg = &pModMachO->pMod->aSegments[c];
+#else
+    /*
+     * Adjust mapping addresses calculating the image size.
+     */
+    {
+        KLDRADDR uNextRVA = 0;
+        KLDRADDR cb;
+        KU32     c;
+
+        /* Adjust RVAs. */
+        c = cSegments - pModMachO->fMakeGot;
+        for (pDstSeg = &pModMachO->pMod->aSegments[0]; c-- > 0; pDstSeg++)
+        {
+            cb = pDstSeg->RVA - uNextRVA;
+            if (cb >= 0x00100000) /* 1MB */
+            {
+                pDstSeg->RVA = uNextRVA;
+                pModMachO->pMod->fFlags |= KLDRMOD_FLAGS_NON_CONTIGUOUS_LINK_ADDRS;
+            }
+            uNextRVA = pDstSeg->RVA + KLDR_ALIGN_ADDR(pDstSeg->cb, pDstSeg->Alignment);
+        }
+
+        /* Calculate the cbMapping members. */
+        c = cSegments - pModMachO->fMakeGot;
+        for (pDstSeg = &pModMachO->pMod->aSegments[0]; c-- > 1; pDstSeg++)
+        {
+            cb = pDstSeg[1].RVA - pDstSeg->RVA;
+            pDstSeg->cbMapped = (KSIZE)cb == cb ? cb : KSIZE_MAX;
+        }
+
+        cb = KLDR_ALIGN_ADDR(pDstSeg->cb, pDstSeg->Alignment);
+        pDstSeg->cbMapped = (KSIZE)cb == cb ? (KSIZE)cb : KSIZE_MAX;
+
+        /* And finally, the image size. */
+        pModMachO->cbImage = pDstSeg->RVA + cb;
+    }
+#endif
+
 
     /*
      * Make the GOT segment if necessary.
@@ -1514,10 +1311,7 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
         KU32 cbGot = pModMachO->cSymbols * cbPtr;
         KU32 cbJmpStubs;
 
-        if (pSeg != &pModMachO->pMod->aSegments[0])
-            pModMachO->GotRVA = pSeg[-1].RVA + KLDR_ALIGN_ADDR(pSeg[-1].cb, pSeg[-1].Alignment);
-        else
-            pModMachO->GotRVA = 0;
+        pModMachO->GotRVA = pModMachO->cbImage;
 
         if (pModMachO->cbJmpStub)
         {
@@ -1531,57 +1325,29 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
             cbJmpStubs = 0;
         }
 
-        pSeg->pvUser = NULL;
-        pSeg->pchName = "GOT";
-        pSeg->cchName = 3;
-        pSeg->SelFlat = 0;
-        pSeg->Sel16bit = 0;
-        pSeg->fFlags = 0;
-        pSeg->enmProt = KPROT_READONLY;
-        pSeg->cb = cbGot + cbJmpStubs;
-        pSeg->Alignment = 64;
-        pSeg->LinkAddress = pModMachO->LinkAddress + pModMachO->GotRVA;
-        pSeg->offFile = -1;
-        pSeg->cbFile  = -1;
-        pSeg->RVA = pModMachO->GotRVA;
-        pSeg->cbMapped = 0;
-        pSeg->MapAddress = 0;
+        pDstSeg = &pModMachO->pMod->aSegments[cSegments - 1];
+        pDstSeg->pvUser = NULL;
+        pDstSeg->pchName = "GOT";
+        pDstSeg->cchName = 3;
+        pDstSeg->SelFlat = 0;
+        pDstSeg->Sel16bit = 0;
+        pDstSeg->fFlags = 0;
+        pDstSeg->enmProt = KPROT_READONLY;
+        pDstSeg->cb = cbGot + cbJmpStubs;
+        pDstSeg->Alignment = 64;
+        pDstSeg->LinkAddress = pModMachO->LinkAddress + pModMachO->GotRVA;
+        pDstSeg->offFile = -1;
+        pDstSeg->cbFile  = -1;
+        pDstSeg->RVA = pModMachO->GotRVA;
+        pDstSeg->cbMapped = KLDR_ALIGN_ADDR(cbGot + cbJmpStubs, pDstSeg->Alignment);
+        pDstSeg->MapAddress = 0;
 
         pSegExtra->iOrgSegNo = KU32_MAX;
         pSegExtra->cSections = 0;
         pSegExtra->paSections = NULL;
+
+        pModMachO->cbImage += pDstSeg->cbMapped;
     }
-
-    /*
-     * Adjust mapping addresses calculating the image size.
-     */
-    pSeg = &pModMachO->pMod->aSegments[0];
-    switch (pModMachO->Hdr.filetype)
-    {
-        case MH_OBJECT:
-        case MH_EXECUTE:
-        case MH_DYLIB: /** @todo dylib */
-        case MH_DSYM:
-        case MH_KEXT_BUNDLE:
-        {
-            KLDRADDR cb1;
-            KSIZE cb2;
-
-            for (i = 0; i < cSegments - 1; i++)
-            {
-                cb1 = pSeg[i + 1].LinkAddress - pSeg[i].LinkAddress;
-                cb2 = (KSIZE)cb1;
-                pSeg[i].cbMapped = cb2 == cb1 ? cb2 : ~(KSIZE)0;
-            }
-            cb1 = KLDR_ALIGN_ADDR(pSeg[i].cb, pSeg[i].Alignment);
-            cb2 = (KSIZE)cb1;
-            pSeg[i].cbMapped = cb2 == cb1 ? cb2 : ~(KSIZE)0;
-
-            pModMachO->cbImage = pSeg[i].RVA + cb1;
-            break;
-        }
-    }
-
 
     return 0;
 }

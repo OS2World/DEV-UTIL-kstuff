@@ -738,6 +738,7 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                             \
                             case S_NON_LAZY_SYMBOL_POINTERS: \
                             case S_LAZY_SYMBOL_POINTERS: \
+                            case S_LAZY_DYLIB_SYMBOL_POINTERS: \
                                 /* (reserved 1 = is indirect symbol table index) */ \
                                 KLDRMODMACHO_CHECK_RETURN(!pSect->reserved2, KLDR_ERR_MACHO_BAD_SECTION); \
                                 *pfCanLoad = K_FALSE; \
@@ -758,6 +759,12 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                                 break; /* ignored */ \
                             \
                             case S_LITERAL_POINTERS: \
+                            case S_DTRACE_DOF: \
+                                KLDRMODMACHO_CHECK_RETURN(!pSect->reserved1, KLDR_ERR_MACHO_BAD_SECTION); \
+                                KLDRMODMACHO_CHECK_RETURN(!pSect->reserved2, KLDR_ERR_MACHO_BAD_SECTION); \
+                                fFileBits = 1; \
+                                break; \
+                            \
                             case S_INTERPOSING: \
                             case S_GB_ZEROFILL: \
                                 KLDRMODMACHO_FAILED_RETURN(KLDR_ERR_MACHO_UNSUPPORTED_SECTION); \
@@ -779,6 +786,12 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                                                   KLDR_ERR_MACHO_BAD_SECTION); \
                         KLDRMODMACHO_CHECK_RETURN(pSect->align < 31, \
                                                   KLDR_ERR_MACHO_BAD_SECTION); \
+                        /* Workaround for buggy ld64 (or as, llvm, ++) that produces a misaligned __TEXT.__unwind_info. */ \
+                        /* Seen: pSect->align = 4, pSect->addr = 0x5ebe14.  Just adjust the alignment down. */ \
+                        if (   ((K_BIT32(pSect->align) - KU32_C(1)) & pSect->addr) \
+                            && pSect->align == 4 \
+                            && kHlpStrComp(pSect->sectname, "__unwind_info") == 0) \
+                            pSect->align = 2; \
                         KLDRMODMACHO_CHECK_RETURN(!((K_BIT32(pSect->align) - KU32_C(1)) & pSect->addr), \
                                                   KLDR_ERR_MACHO_BAD_SECTION); \
                         KLDRMODMACHO_CHECK_RETURN(!((K_BIT32(pSect->align) - KU32_C(1)) & pSrcSeg->vmaddr), \
@@ -1024,6 +1037,7 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                 /** @todo valid command size. */
                 if (!(fOpenFlags & KLDRMOD_OPEN_FLAGS_FOR_INFO))
                     KLDRMODMACHO_FAILED_RETURN(KLDR_ERR_MACHO_UNSUPPORTED_LOAD_COMMAND);
+                *pfCanLoad = K_FALSE;
                 break;
 
             case LC_LOADFVMLIB:

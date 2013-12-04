@@ -782,7 +782,8 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                         \
                         KLDRMODMACHO_CHECK_RETURN(pSect->addr - pSrcSeg->vmaddr <= pSrcSeg->vmsize, \
                                                   KLDR_ERR_MACHO_BAD_SECTION); \
-                        KLDRMODMACHO_CHECK_RETURN(pSect->addr - pSrcSeg->vmaddr + pSect->size <= pSrcSeg->vmsize, \
+                        KLDRMODMACHO_CHECK_RETURN(   pSect->addr - pSrcSeg->vmaddr + pSect->size <= pSrcSeg->vmsize \
+                                                  || !kHlpStrComp(pSrcSeg->segname, "__CTF") /* see above */, \
                                                   KLDR_ERR_MACHO_BAD_SECTION); \
                         KLDRMODMACHO_CHECK_RETURN(pSect->align < 31, \
                                                   KLDR_ERR_MACHO_BAD_SECTION); \
@@ -1206,7 +1207,8 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
                      */ \
                     if (   pModMachO->uEffFileType != MH_OBJECT \
                         && (cSectionsLeft == 0 || !(pFirstSect->flags & S_ATTR_DEBUG)) \
-                        && kHlpStrComp(pSrcSeg->segname, "__DWARF") ) \
+                        && kHlpStrComp(pSrcSeg->segname, "__DWARF") \
+                        && kHlpStrComp(pSrcSeg->segname, "__CTF") ) \
                     { \
                         NEW_SEGMENT(a_cBits, pSrcSeg->segname, K_FALSE /*a_fObjFile*/, 0 /*a_achName2*/, \
                                     pSrcSeg->vmaddr, pSrcSeg->vmsize, \
@@ -1223,7 +1225,8 @@ static int  kldrModMachOParseLoadCommands(PKLDRMODMACHO pModMachO, char *pbStrin
                         KBOOL fAddSegInner = K_FALSE; \
                         if (   pModMachO->uEffFileType == MH_OBJECT \
                             && !(pSect->flags & S_ATTR_DEBUG) \
-                            && kHlpStrComp(pSrcSeg->segname, "__DWARF") ) \
+                            && kHlpStrComp(pSrcSeg->segname, "__DWARF") \
+                            && kHlpStrComp(pSrcSeg->segname, "__CTF") ) \
                         { \
                             kHlpAssert(!fAddSegOuter); \
                             NEW_SEGMENT(a_cBits, pSect->segname, K_TRUE /*a_fObjFile*/, pSect->sectname, \

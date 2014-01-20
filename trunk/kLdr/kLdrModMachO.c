@@ -3334,7 +3334,7 @@ static int  kldrModMachOLoadObjSymTab(PKLDRMODMACHO pModMachO)
         }
     }
     else
-        KLDRMODMACHO_ASSERT(pModMachO->pchStrings);
+        KLDRMODMACHO_ASSERT(pModMachO->pchStrings || pModMachO->Hdr.filetype == MH_DSYM);
 
     return rc;
 }

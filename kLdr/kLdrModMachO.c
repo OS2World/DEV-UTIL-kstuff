@@ -1020,6 +1020,9 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
                 /** @todo valid command size. */
                 break;
 
+            case LC_FUNCTION_STARTS:    /** @todo dylib++ */
+                /* Ignore for now. */
+                break;
             case LC_ID_DYLIB:           /** @todo dylib */
             case LC_LOAD_DYLIB:         /** @todo dylib */
             case LC_LOAD_DYLINKER:      /** @todo dylib */
@@ -1032,7 +1035,6 @@ static int  kldrModMachOPreParseLoadCommands(KU8 *pbLoadCommands, const mach_hea
             case LC_DYLD_INFO:          /** @todo dylib */
             case LC_DYLD_INFO_ONLY:     /** @todo dylib */
             case LC_LOAD_UPWARD_DYLIB:  /** @todo dylib */
-            case LC_FUNCTION_STARTS:    /** @todo dylib++ */
             case LC_DYLD_ENVIRONMENT:   /** @todo dylib */
             case LC_MAIN: /** @todo parse this and find and entry point or smth. */
                 /** @todo valid command size. */
@@ -3077,10 +3079,24 @@ static int  kldrModMachOFixupSectionAMD64(PKLDRMODMACHO pModMachO, KU8 *pbSectBi
                             KLDRMODMACHO_CHECK_RETURN(Fixup.r.r_length == 2, KLDR_ERR_BAD_FIXUP);
                             SymAddr -= 4;
                             break;
-                        case X86_64_RELOC_SIGNED_1: SymAddr -= 1; break;
-                        case X86_64_RELOC_SIGNED_2: SymAddr -= 2; break;
                         case X86_64_RELOC_SIGNED:
-                        case X86_64_RELOC_SIGNED_4: SymAddr -= 4; break;
+                            SymAddr -= 4;
+                            break;
+                        case X86_64_RELOC_SIGNED_1:
+                            SymAddr -= 4 + 1;
+                            if (Fixup.r.r_extern)
+                                SymAddr += 1;
+                            break;
+                        case X86_64_RELOC_SIGNED_2:
+                            SymAddr -= 4 + 2;
+                            if (Fixup.r.r_extern)
+                                SymAddr += 2;
+                            break;
+                        case X86_64_RELOC_SIGNED_4:
+                            SymAddr -= 4 + 4;
+                            if (Fixup.r.r_extern)
+                                SymAddr += 4;
+                            break;
                         default:
                             KLDRMODMACHO_CHECK_RETURN(0, KLDR_ERR_BAD_FIXUP);
                     }

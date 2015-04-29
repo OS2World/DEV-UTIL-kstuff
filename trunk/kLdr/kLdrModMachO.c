@@ -3200,7 +3200,6 @@ static int  kldrModMachOFixupSectionAMD64(PKLDRMODMACHO pModMachO, KU8 *pbSectBi
                     else if (Fixup2.r_symbolnum != R_ABS)
                     {
                         PKLDRMODMACHOSECT pSymSect;
-                        KLDRADDR TmpAddr;
                         KLDRMODMACHO_CHECK_RETURN(Fixup2.r_symbolnum <= pModMachO->cSections, KLDR_ERR_BAD_FIXUP);
                         pSymSect = &pModMachO->paSections[Fixup2.r_symbolnum - 1];
                         SymAddr += pSymSect->RVA + NewBaseAddress;
